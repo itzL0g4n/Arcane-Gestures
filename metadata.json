@@ -1,0 +1,7 @@
+{
+  "name": "Arcane Gestures",
+  "description": "A webcam-based magic duel game where you cast spells by drawing symbols in the air with your hands.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

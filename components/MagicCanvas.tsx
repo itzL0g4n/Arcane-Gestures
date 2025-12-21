@@ -1,0 +1,732 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { GameState, Point, SpellType, Particle } from '../types';
+import { distance, recognizeGesture } from '../utils/geometry';
+
+// -- Constants --
+const HAND_CONNECTIONS = [
+  [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
+  [0, 5], [5, 6], [6, 7], [7, 8], // Index
+  [5, 9], [9, 10], [10, 11], [11, 12], // Middle
+  [9, 13], [13, 14], [14, 15], [15, 16], // Ring
+  [13, 17], [17, 18], [18, 19], [19, 20], // Pinky
+  [0, 17] // Wrist to Pinky
+];
+
+const PINCH_START_THRESHOLD = 0.05;
+const PINCH_RELEASE_THRESHOLD = 0.12; 
+const SMOOTHING_FACTOR = 0.6; 
+
+// -- Visual Effects System --
+
+interface VisualEffect {
+  isDead: boolean;
+  update: (ctx: CanvasRenderingContext2D, width: number, height: number, spawnParticle: (x: number, y: number, color: string, speed?: number, life?: number) => void) => void;
+  draw: (ctx: CanvasRenderingContext2D) => void;
+}
+
+class FireballEffect implements VisualEffect {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  isDead: boolean = false;
+  targetX: number;
+  targetY: number;
+
+  constructor(startX: number, startY: number, targetX: number, targetY: number) {
+    this.x = startX;
+    this.y = startY;
+    this.targetX = targetX;
+    this.targetY = targetY;
+    const angle = Math.atan2(targetY - startY, targetX - startX);
+    const speed = 25; // Fast projectile
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+  }
+
+  update(ctx: CanvasRenderingContext2D, w: number, h: number, spawnParticle: Function) {
+    this.x += this.vx;
+    this.y += this.vy;
+
+    // Trail
+    for(let i=0; i<3; i++) {
+        spawnParticle(
+            this.x + (Math.random() - 0.5) * 20, 
+            this.y + (Math.random() - 0.5) * 20, 
+            Math.random() > 0.5 ? '#ff4400' : '#ffff00', 
+            2, 
+            0.5
+        );
+    }
+
+    // Hit detection (Center of screen)
+    const dist = Math.sqrt(Math.pow(this.x - this.targetX, 2) + Math.pow(this.y - this.targetY, 2));
+    if (dist < 30 || this.x < 0 || this.x > w || this.y < 0 || this.y > h) {
+      this.isDead = true;
+      // Explosion
+      for(let i=0; i<40; i++) {
+        spawnParticle(this.x, this.y, '#ffaa00', 8, 1.5);
+        spawnParticle(this.x, this.y, '#ff4400', 5, 1.2);
+      }
+    }
+  }
+
+  draw(ctx: CanvasRenderingContext2D) {
+    ctx.shadowBlur = 30;
+    ctx.shadowColor = '#ff4400';
+    ctx.fillStyle = '#ffaa00';
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, 15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
+class FrostboltEffect implements VisualEffect {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    isDead: boolean = false;
+    targetX: number;
+    targetY: number;
+  
+    constructor(startX: number, startY: number, targetX: number, targetY: number) {
+      this.x = startX;
+      this.y = startY;
+      this.targetX = targetX;
+      this.targetY = targetY;
+      const angle = Math.atan2(targetY - startY, targetX - startX);
+      const speed = 20; 
+      this.vx = Math.cos(angle) * speed;
+      this.vy = Math.sin(angle) * speed;
+    }
+  
+    update(ctx: CanvasRenderingContext2D, w: number, h: number, spawnParticle: Function) {
+      this.x += this.vx;
+      this.y += this.vy;
+  
+      // Icy Trail
+      for(let i=0; i<3; i++) {
+          spawnParticle(
+              this.x + (Math.random() - 0.5) * 15, 
+              this.y + (Math.random() - 0.5) * 15, 
+              Math.random() > 0.5 ? '#aaddff' : '#ffffff', 
+              1.5, 
+              0.8
+          );
+      }
+  
+      const dist = Math.sqrt(Math.pow(this.x - this.targetX, 2) + Math.pow(this.y - this.targetY, 2));
+      if (dist < 30 || this.x < 0 || this.x > w || this.y < 0 || this.y > h) {
+        this.isDead = true;
+        // Ice Shatter
+        for(let i=0; i<30; i++) {
+          spawnParticle(this.x, this.y, '#ccffff', 6, 1.0);
+          spawnParticle(this.x, this.y, '#00ffff', 4, 1.0);
+        }
+      }
+    }
+  
+    draw(ctx: CanvasRenderingContext2D) {
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = '#00ffff';
+      ctx.fillStyle = '#ccffff';
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+  }
+
+class ShieldEffect implements VisualEffect {
+  life: number = 1.0;
+  isDead: boolean = false;
+  
+  update() {
+    this.life -= 0.015;
+    if (this.life <= 0) this.isDead = true;
+  }
+
+  draw(ctx: CanvasRenderingContext2D) {
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+    const cx = w / 2;
+    const cy = h / 2;
+    
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, this.life);
+    
+    // Hexagon Grid Overlay
+    ctx.strokeStyle = '#00ffff';
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#00ffff';
+    
+    // Draw a central shield emblem
+    ctx.beginPath();
+    ctx.arc(cx, cy, 150 * (2 - this.life), 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 255, 255, 0.1)';
+    ctx.fill();
+    ctx.stroke();
+
+    // Draw Vignette
+    const gradient = ctx.createRadialGradient(cx, cy, h/3, cx, cy, h);
+    gradient.addColorStop(0, 'rgba(0,0,0,0)');
+    gradient.addColorStop(1, 'rgba(0, 255, 255, 0.2)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0,0,w,h);
+
+    ctx.restore();
+  }
+}
+
+class HealEffect implements VisualEffect {
+    life: number = 1.0;
+    isDead: boolean = false;
+    particles: {x: number, y: number, vx: number, vy: number, size: number}[] = [];
+
+    constructor(w: number, h: number) {
+        for(let i=0; i<30; i++) {
+            this.particles.push({
+                x: w/2 + (Math.random() - 0.5) * 200,
+                y: h,
+                vx: (Math.random() - 0.5) * 2,
+                vy: -Math.random() * 5 - 2,
+                size: Math.random() * 5 + 2
+            });
+        }
+    }
+
+    update(ctx: CanvasRenderingContext2D, w: number, h: number) {
+        this.life -= 0.02;
+        if(this.life <= 0) this.isDead = true;
+        this.particles.forEach(p => {
+            p.x += p.vx;
+            p.y += p.vy;
+        });
+    }
+
+    draw(ctx: CanvasRenderingContext2D) {
+        ctx.save();
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = '#00ff88';
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#00ff88';
+        
+        this.particles.forEach(p => {
+            ctx.beginPath();
+            // Draw cross shape
+            ctx.fillRect(p.x - p.size/2, p.y - p.size * 1.5, p.size, p.size * 3);
+            ctx.fillRect(p.x - p.size * 1.5, p.y - p.size/2, p.size * 3, p.size);
+        });
+        
+        // Green Vignette
+        const gradient = ctx.createRadialGradient(ctx.canvas.width/2, ctx.canvas.height/2, 0, ctx.canvas.width/2, ctx.canvas.height/2, ctx.canvas.height);
+        gradient.addColorStop(0.5, 'rgba(0,0,0,0)');
+        gradient.addColorStop(1, 'rgba(0, 255, 136, 0.2)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0,0, ctx.canvas.width, ctx.canvas.height);
+
+        ctx.restore();
+    }
+}
+
+class LightningEffect implements VisualEffect {
+  segments: {x: number, y: number}[] = [];
+  life: number = 1.0;
+  isDead: boolean = false;
+  
+  constructor(w: number, h: number) {
+    let currX = w / 2 + (Math.random() - 0.5) * 400; // Start somewhere at top
+    let currY = 0;
+    this.segments.push({x: currX, y: currY});
+
+    while (currY < h) {
+        currY += Math.random() * 50 + 20;
+        currX += (Math.random() - 0.5) * 100;
+        this.segments.push({x: currX, y: currY});
+    }
+  }
+
+  update(ctx: CanvasRenderingContext2D, w: number, h: number, spawnParticle: Function) {
+    this.life -= 0.05;
+    if (this.life <= 0) this.isDead = true;
+    
+    // Sparks along the bolt
+    if (this.life > 0.5) {
+        this.segments.forEach(p => {
+             if(Math.random() > 0.8) spawnParticle(p.x, p.y, '#ffffff', 3, 0.4);
+        });
+    }
+  }
+
+  draw(ctx: CanvasRenderingContext2D) {
+    if (this.segments.length < 2) return;
+    
+    ctx.save();
+    const alpha = Math.random() * this.life; // Flicker
+    ctx.globalAlpha = alpha;
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = '#ffffff';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 4;
+    ctx.lineJoin = 'round';
+    
+    ctx.beginPath();
+    ctx.moveTo(this.segments[0].x, this.segments[0].y);
+    for(let i=1; i<this.segments.length; i++) {
+        ctx.lineTo(this.segments[i].x, this.segments[i].y);
+    }
+    ctx.stroke();
+
+    // Outer Glow
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = 'rgba(200, 200, 255, 0.5)';
+    ctx.stroke();
+
+    // Screen Flash
+    if (this.life > 0.8) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${this.life * 0.3})`;
+        ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    }
+
+    ctx.restore();
+  }
+}
+
+
+interface MagicCanvasProps {
+  onSpellCast: (spell: SpellType) => void;
+  setGameState: (state: GameState) => void;
+  gameState: GameState;
+  isMirrored: boolean;
+  fitMode: 'cover' | 'contain';
+}
+
+const MagicCanvas: React.FC<MagicCanvasProps> = ({ 
+  onSpellCast, 
+  setGameState, 
+  gameState,
+  isMirrored,
+  fitMode
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
+
+  // -- Game State --
+  const isPinching = useRef<boolean>(false);
+  const pathRef = useRef<Point[]>([]);
+  const lastPointRef = useRef<Point | null>(null); // For smoothing
+  
+  const particlesRef = useRef<Particle[]>([]);
+  const effectsRef = useRef<VisualEffect[]>([]);
+  const requestRef = useRef<number>(0);
+  
+  const propsRef = useRef({ onSpellCast, setGameState, isMirrored, fitMode });
+
+  useEffect(() => {
+    propsRef.current = { onSpellCast, setGameState, isMirrored, fitMode };
+  }, [onSpellCast, setGameState, isMirrored, fitMode]);
+
+  useEffect(() => {
+    const handleResize = () => {
+        setDimensions({ width: window.innerWidth, height: window.innerHeight });
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    let hands: any = null;
+    let stream: MediaStream | null = null;
+    let isMounted = true;
+
+    const setup = async () => {
+        const Hands = (window as any).Hands;
+        if (!Hands) {
+            console.error("MediaPipe Hands script not loaded");
+            if(isMounted) setCameraError("MediaPipe Hands not found. Check internet connection.");
+            return;
+        }
+
+        hands = new Hands({
+            locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.6,
+            selfieMode: false, 
+        });
+
+        hands.onResults(onResults);
+
+        if (videoRef.current) {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                });
+                
+                if (!isMounted) {
+                    stream.getTracks().forEach(t => t.stop());
+                    return;
+                }
+                
+                videoRef.current.srcObject = stream;
+                
+                // Wait for video metadata to be loaded
+                await new Promise((resolve) => {
+                    if (videoRef.current) {
+                         // If readyState is already enough, resolve immediately
+                        if (videoRef.current.readyState >= 1) {
+                            resolve(true);
+                        } else {
+                            videoRef.current.onloadedmetadata = () => resolve(true);
+                        }
+                    }
+                });
+
+                if (!isMounted) return;
+
+                await videoRef.current.play();
+                
+                requestRef.current = requestAnimationFrame(processFrame);
+            } catch (err: any) {
+                console.error("Camera Error:", err);
+                let msg = "Camera access error.";
+                if (err.name === 'NotAllowedError') msg = "Camera permission denied.";
+                else if (err.name === 'NotReadableError') msg = "Camera is in use by another app.";
+                else if (err.name === 'NotFoundError') msg = "No camera found.";
+                
+                if (isMounted) setCameraError(msg);
+            }
+        }
+    };
+
+    const processFrame = async () => {
+        if (!isMounted) return;
+        if (!videoRef.current || !hands) return;
+        
+        // Ensure video has data before sending to MediaPipe
+        if (videoRef.current.readyState >= 2) {
+             try {
+                await hands.send({ image: videoRef.current });
+             } catch(e) {
+                 // Suppress transient errors from MediaPipe during startup
+             }
+        }
+        
+        if (isMounted) {
+            requestRef.current = requestAnimationFrame(processFrame);
+        }
+    };
+
+    setup();
+
+    return () => {
+        isMounted = false;
+        if (requestRef.current) cancelAnimationFrame(requestRef.current);
+        if (hands) hands.close();
+        if (stream) stream.getTracks().forEach(t => t.stop());
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
+    };
+  }, []);
+
+  const onResults = (results: any) => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    const { isMirrored, fitMode, setGameState, onSpellCast } = propsRef.current;
+
+    if (!canvas || !video) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const sw = canvas.width;
+    const sh = canvas.height;
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+
+    if (vw === 0 || vh === 0) return;
+
+    // 1. Calculate Scaling
+    let scale = 1;
+    if (fitMode === 'cover') {
+        scale = Math.max(sw / vw, sh / vh);
+    } else {
+        scale = Math.min(sw / vw, sh / vh);
+    }
+    
+    const scaledW = vw * scale;
+    const scaledH = vh * scale;
+    const offsetX = (sw - scaledW) / 2;
+    const offsetY = (sh - scaledH) / 2;
+
+    // 2. Draw Video
+    ctx.save();
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, sw, sh); 
+    
+    ctx.translate(offsetX, offsetY);
+    if (isMirrored) {
+        ctx.translate(scaledW, 0);
+        ctx.scale(-1, 1);
+    }
+    ctx.drawImage(video, 0, 0, scaledW, scaledH);
+    ctx.restore();
+
+    // 3. Coordinate Mapper
+    const toScreen = (p: {x: number, y: number}) => {
+        let x = p.x;
+        if (isMirrored) x = 1 - x; 
+        
+        return {
+            x: offsetX + x * scaledW,
+            y: offsetY + p.y * scaledH
+        };
+    };
+
+    // 4. Process Hands
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const rawLandmarks = results.multiHandLandmarks[0];
+        const screenLandmarks = rawLandmarks.map(toScreen);
+
+        drawSkeleton(ctx, screenLandmarks);
+        handleGestures(ctx, screenLandmarks, rawLandmarks, isMirrored, sw, sh);
+    } else {
+        if (isPinching.current) {
+           isPinching.current = false;
+           pathRef.current = [];
+           lastPointRef.current = null;
+           setGameState(GameState.IDLE);
+        }
+    }
+
+    drawPath(ctx);
+    updateEffects(ctx, sw, sh);
+    updateParticles(ctx);
+  };
+
+  const drawSkeleton = (ctx: CanvasRenderingContext2D, landmarks: any[]) => {
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    for (const [start, end] of HAND_CONNECTIONS) {
+       const p1 = landmarks[start];
+       const p2 = landmarks[end];
+       ctx.beginPath();
+       ctx.moveTo(p1.x, p1.y);
+       ctx.lineTo(p2.x, p2.y);
+       ctx.stroke();
+    }
+    ctx.fillStyle = '#ff4444';
+    for (const lm of landmarks) {
+       ctx.beginPath();
+       ctx.arc(lm.x, lm.y, 4, 0, 2 * Math.PI);
+       ctx.fill();
+    }
+  };
+
+  const handleGestures = (
+      ctx: CanvasRenderingContext2D, 
+      screenLms: any[], 
+      rawLms: any[], 
+      isMirrored: boolean,
+      screenWidth: number,
+      screenHeight: number
+    ) => {
+      const indexTip = screenLms[8];
+      
+      const rawIndex = rawLms[8];
+      const rawThumb = rawLms[4];
+      const dist = distance(rawIndex, rawThumb);
+
+      // HYSTERESIS
+      const isPinchActive = isPinching.current 
+          ? dist < PINCH_RELEASE_THRESHOLD 
+          : dist < PINCH_START_THRESHOLD;
+
+      if (isPinchActive) {
+          if (!isPinching.current) {
+              isPinching.current = true;
+              pathRef.current = [];
+              lastPointRef.current = indexTip; // Initialize with current pos
+              propsRef.current.setGameState(GameState.DRAWING);
+          }
+          
+          // --- SMOOTHING (Low Pass Filter) ---
+          let pointToAdd = indexTip;
+          if (lastPointRef.current) {
+              pointToAdd = {
+                  x: lastPointRef.current.x * (1 - SMOOTHING_FACTOR) + indexTip.x * SMOOTHING_FACTOR,
+                  y: lastPointRef.current.y * (1 - SMOOTHING_FACTOR) + indexTip.y * SMOOTHING_FACTOR
+              };
+          }
+          lastPointRef.current = pointToAdd;
+          pathRef.current.push(pointToAdd);
+
+          // Visuals
+          ctx.shadowBlur = 20;
+          ctx.shadowColor = '#00ffff';
+          ctx.fillStyle = '#00ffff';
+          ctx.beginPath();
+          ctx.arc(pointToAdd.x, pointToAdd.y, 10, 0, 2*Math.PI);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          
+          if (Math.random() > 0.5) spawnParticle(pointToAdd.x, pointToAdd.y, '#ccffff');
+      } else {
+          if (isPinching.current) {
+              isPinching.current = false;
+              lastPointRef.current = null;
+              
+              // Normalize path for recognition
+              const normalizedPath = pathRef.current.map(p => ({
+                  x: p.x / screenWidth,
+                  y: p.y / screenHeight
+              }));
+
+              const spell = recognizeGesture(normalizedPath);
+              
+              if (spell !== SpellType.NONE) {
+                  // NOTE: Logic moved to parent component (App.tsx) handles game state.
+                  // But we still trigger visual effects here immediately for responsiveness.
+                  propsRef.current.onSpellCast(spell);
+                  const lastP = pathRef.current[pathRef.current.length - 1];
+                  
+                  // Trigger Visual Effects
+                  if (spell === SpellType.FIREBALL) {
+                      effectsRef.current.push(new FireballEffect(lastP.x, lastP.y, screenWidth / 2, screenHeight / 2));
+                  } else if (spell === SpellType.SHIELD) {
+                      effectsRef.current.push(new ShieldEffect());
+                  } else if (spell === SpellType.LIGHTNING) {
+                      effectsRef.current.push(new LightningEffect(screenWidth, screenHeight));
+                  } else if (spell === SpellType.HEAL) {
+                      effectsRef.current.push(new HealEffect(screenWidth, screenHeight));
+                  } else if (spell === SpellType.FROSTBOLT) {
+                      effectsRef.current.push(new FrostboltEffect(lastP.x, lastP.y, screenWidth / 2, screenHeight / 2));
+                  }
+
+                  // General mana burst
+                  for(let i=0; i<15; i++) spawnParticle(lastP.x, lastP.y, getSpellColor(spell));
+                  
+                  // Optimistic State Update for visual feedback
+                  propsRef.current.setGameState(GameState.CASTING);
+                  setTimeout(() => {
+                      pathRef.current = [];
+                      propsRef.current.setGameState(GameState.IDLE);
+                  }, 500);
+              } else {
+                  propsRef.current.setGameState(GameState.IDLE);
+                  pathRef.current = [];
+              }
+          }
+      }
+  };
+
+  const drawPath = (ctx: CanvasRenderingContext2D) => {
+      if (pathRef.current.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(pathRef.current[0].x, pathRef.current[0].y);
+      for (let i=1; i < pathRef.current.length; i++) {
+         ctx.lineTo(pathRef.current[i].x, pathRef.current[i].y);
+      }
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#00ffff';
+      ctx.shadowColor = '#00ffff';
+      ctx.shadowBlur = 15;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#fff';
+      ctx.stroke();
+  };
+
+  const spawnParticle = (x: number, y: number, color: string, speedMult: number = 1.0, lifeMult: number = 1.0) => {
+    const angle = Math.random() * 2 * Math.PI;
+    const speed = (Math.random() * 4 + 2) * speedMult;
+    particlesRef.current.push({
+       x, y, color,
+       vx: Math.cos(angle) * speed,
+       vy: Math.sin(angle) * speed,
+       life: 1.0 * lifeMult, maxLife: 1.0 * lifeMult, size: Math.random() * 5 + 2
+    });
+  };
+
+  const updateParticles = (ctx: CanvasRenderingContext2D) => {
+      for (let i = particlesRef.current.length - 1; i >= 0; i--) {
+         const p = particlesRef.current[i];
+         p.x += p.vx;
+         p.y += p.vy;
+         p.life -= 0.02;
+         if (p.life <= 0) {
+             particlesRef.current.splice(i, 1);
+             continue;
+         }
+         ctx.globalAlpha = p.life / p.maxLife;
+         ctx.fillStyle = p.color;
+         ctx.beginPath();
+         ctx.arc(p.x, p.y, p.size, 0, 2*Math.PI);
+         ctx.fill();
+         ctx.globalAlpha = 1.0;
+      }
+  };
+
+  const updateEffects = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
+      for (let i = effectsRef.current.length - 1; i >= 0; i--) {
+          const effect = effectsRef.current[i];
+          effect.update(ctx, w, h, spawnParticle);
+          effect.draw(ctx);
+          if (effect.isDead) {
+              effectsRef.current.splice(i, 1);
+          }
+      }
+  }
+
+  const getSpellColor = (type: SpellType) => {
+      switch(type) {
+          case SpellType.FIREBALL: return '#ff4400';
+          case SpellType.SHIELD: return '#00ff44';
+          case SpellType.LIGHTNING: return '#ffff00';
+          case SpellType.HEAL: return '#00ff88';
+          case SpellType.FROSTBOLT: return '#00ffff';
+          default: return '#ffffff';
+      }
+  };
+
+  return (
+    <div className="relative w-full h-full bg-black">
+       {cameraError && (
+          <div className="absolute inset-0 flex items-center justify-center z-50">
+             <div className="bg-white text-red-600 p-4 rounded font-bold">{cameraError}</div>
+          </div>
+       )}
+       {/* Use opacity-0 instead of hidden to ensure video frames are updated by the browser */}
+       <video 
+         ref={videoRef} 
+         className="absolute top-0 left-0 w-full h-full opacity-0 pointer-events-none" 
+         playsInline 
+         muted 
+       />
+       <canvas 
+         ref={canvasRef} 
+         width={dimensions.width}
+         height={dimensions.height}
+         className="block"
+       />
+    </div>
+  );
+};
+
+export default MagicCanvas;
