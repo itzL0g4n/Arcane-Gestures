@@ -9,9 +9,7 @@ if (!rootElement) {
 
 const root = ReactDOM.createRoot(rootElement);
 root.render(
-  // StrictMode can sometimes cause double-initialization issues with MediaPipe in dev,
-  // but we will handle cleanup properly in useEffects.
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
+  // Removed StrictMode to prevent double-initialization of MediaPipe/Camera 
+  // which can cause resource conflicts and performance issues in development.
+  <App />
 );

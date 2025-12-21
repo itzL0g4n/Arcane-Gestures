@@ -228,7 +228,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="relative w-screen h-screen bg-black text-white font-sans overflow-hidden">
+    <div className="relative w-screen h-[100dvh] bg-black text-white font-sans overflow-hidden">
       {/* Main Game Layer */}
       <MagicCanvas 
         onSpellCast={handleSpellCast} 

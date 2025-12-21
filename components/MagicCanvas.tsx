@@ -345,10 +345,18 @@ const MagicCanvas: React.FC<MagicCanvasProps> = ({
     let isMounted = true;
 
     const setup = async () => {
+        // Retry logic for obtaining the global Hands object
+        // This is necessary if the script is deferred or loads slowly
+        let attempts = 0;
+        while (!(window as any).Hands && attempts < 20) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+            attempts++;
+        }
+
         const Hands = (window as any).Hands;
         if (!Hands) {
             console.error("MediaPipe Hands script not loaded");
-            if(isMounted) setCameraError("MediaPipe Hands not found. Check internet connection.");
+            if(isMounted) setCameraError("MediaPipe failed to load. Please refresh.");
             return;
         }
 
@@ -368,11 +376,10 @@ const MagicCanvas: React.FC<MagicCanvasProps> = ({
 
         if (videoRef.current) {
             try {
+                // Removed strict resolution constraints to improve compatibility
                 stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'user',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
                     },
                 });
                 
@@ -397,7 +404,13 @@ const MagicCanvas: React.FC<MagicCanvasProps> = ({
 
                 if (!isMounted) return;
 
-                await videoRef.current.play();
+                // Explicitly play and handle potential play() interruption
+                try {
+                  await videoRef.current.play();
+                } catch (playErr) {
+                  console.warn("Autoplay blocked or interrupted:", playErr);
+                  // Continue anyway, as some browsers might auto-play if muted
+                }
                 
                 requestRef.current = requestAnimationFrame(processFrame);
             } catch (err: any) {
@@ -406,6 +419,7 @@ const MagicCanvas: React.FC<MagicCanvasProps> = ({
                 if (err.name === 'NotAllowedError') msg = "Camera permission denied.";
                 else if (err.name === 'NotReadableError') msg = "Camera is in use by another app.";
                 else if (err.name === 'NotFoundError') msg = "No camera found.";
+                else if (err.message) msg = err.message; // Display the actual error message (e.g., "Could not start video source")
                 
                 if (isMounted) setCameraError(msg);
             }
@@ -416,8 +430,8 @@ const MagicCanvas: React.FC<MagicCanvasProps> = ({
         if (!isMounted) return;
         if (!videoRef.current || !hands) return;
         
-        // Ensure video has data before sending to MediaPipe
-        if (videoRef.current.readyState >= 2) {
+        // Ensure video is playing and has source before processing
+        if (videoRef.current.readyState >= 2 && videoRef.current.srcObject) {
              try {
                 await hands.send({ image: videoRef.current });
              } catch(e) {
@@ -435,7 +449,11 @@ const MagicCanvas: React.FC<MagicCanvasProps> = ({
     return () => {
         isMounted = false;
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
-        if (hands) hands.close();
+        if (hands) {
+            try {
+              hands.close();
+            } catch(e) { /* ignore cleanup errors */ }
+        }
         if (stream) stream.getTracks().forEach(t => t.stop());
         if (videoRef.current) {
             videoRef.current.srcObject = null;
@@ -717,6 +735,7 @@ const MagicCanvas: React.FC<MagicCanvasProps> = ({
          ref={videoRef} 
          className="absolute top-0 left-0 w-full h-full opacity-0 pointer-events-none" 
          playsInline 
+         autoPlay
          muted 
        />
        <canvas 
