@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import MagicCanvas from './components/MagicCanvas';
 import { GameState, Spell, SpellType } from './types';
-import { Flame, Shield, Zap, Info, Skull, Heart, Settings, Maximize, Minimize, FlipHorizontal, Snowflake, PlusSquare } from 'lucide-react';
+import { Flame, Shield, Zap, Info, Skull, Heart, Settings, Maximize, Minimize, FlipHorizontal, Snowflake, PlusSquare, Scroll } from 'lucide-react';
 
 const COOLDOWNS: Record<SpellType, number> = {
   [SpellType.NONE]: 0,
@@ -12,9 +12,17 @@ const COOLDOWNS: Record<SpellType, number> = {
   [SpellType.FROSTBOLT]: 500,
 };
 
+interface EnemyLogEntry {
+    id: string;
+    text: string;
+    type: 'attack' | 'info';
+}
+
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.IDLE);
   const [spellLog, setSpellLog] = useState<Spell[]>([]);
+  const [enemyLog, setEnemyLog] = useState<EnemyLogEntry[]>([]);
+  const [isShaking, setIsShaking] = useState(false);
   
   // Settings
   const [isMirrored, setIsMirrored] = useState(true); 
@@ -30,7 +38,7 @@ const App: React.FC = () => {
   
   // Cooldown State
   const [lastCastTimes, setLastCastTimes] = useState<Record<string, number>>({});
-  const [cooldownProgress, setCooldownProgress] = useState<Record<string, number>>({}); // 0 to 100
+  const [cooldownProgress, setCooldownProgress] = useState<Record<string, number>>({}); 
 
   const isPlayerShieldedRef = useRef(false);
   const gameOverRef = useRef(false);
@@ -48,6 +56,15 @@ const App: React.FC = () => {
       gameOverRef.current = true;
     }
   }, [playerHp, enemyHp]);
+
+  const triggerShake = () => {
+      setIsShaking(true);
+      setTimeout(() => setIsShaking(false), 500);
+  };
+
+  const addEnemyLog = (text: string, type: 'attack' | 'info' = 'info') => {
+      setEnemyLog(prev => [{id: Date.now().toString() + Math.random(), text, type}, ...prev].slice(0, 4));
+  };
 
   // Cooldown Timer Loop
   useEffect(() => {
@@ -82,28 +99,39 @@ const App: React.FC = () => {
     const lastCast = lastCastTimes[type] || 0;
     if (now - lastCast < COOLDOWNS[type]) {
         setEnemyStatus(`${getSpellName(type)} on Cooldown!`);
-        return; // Spell Fizzles (Cooldown)
+        return; 
     }
 
     setLastCastTimes(prev => ({...prev, [type]: now}));
 
     // Apply Effects
+    let dmg = 0;
+    let status = "";
+    
     if (type === SpellType.FIREBALL) {
-      setEnemyHp(prev => Math.max(0, prev - 15));
-      setEnemyStatus("Took 15 Damage!");
+      dmg = 15;
+      status = "Took 15 Damage!";
     } else if (type === SpellType.LIGHTNING) {
-      setEnemyHp(prev => Math.max(0, prev - 25));
-       setEnemyStatus("CRITICAL HIT! (25)");
+      dmg = 25;
+      status = "CRITICAL HIT! (25)";
     } else if (type === SpellType.SHIELD) {
       setIsPlayerShielded(true);
       setTimeout(() => setIsPlayerShielded(false), 4000);
-      setEnemyStatus("Shield Up!");
+      status = "Shield Up!";
     } else if (type === SpellType.HEAL) {
       setPlayerHp(prev => Math.min(100, prev + 20));
-      setEnemyStatus("Player Healed (+20)!");
+      status = "Player Healed (+20)!";
     } else if (type === SpellType.FROSTBOLT) {
-      setEnemyHp(prev => Math.max(0, prev - 8));
-      setEnemyStatus("Frozen! (8 Dmg)");
+      dmg = 8;
+      status = "Frozen! (8 Dmg)";
+    }
+
+    if (dmg > 0) {
+        setEnemyHp(prev => Math.max(0, prev - dmg));
+        setEnemyStatus(status);
+        triggerShake();
+    } else {
+        setEnemyStatus(status);
     }
 
     const spellData: Spell = {
@@ -126,17 +154,23 @@ const App: React.FC = () => {
       
       if (actionRoll < 0.4) {
         setEnemyStatus("Casting Shadow Bolt!");
+        addEnemyLog("Casting Shadow Bolt...", 'info');
+        
         setTimeout(() => {
           if (gameOverRef.current) return;
           if (isPlayerShieldedRef.current) {
              setEnemyStatus("Attack Blocked!");
+             addEnemyLog("Attack Blocked by Shield!", 'info');
           } else {
              setPlayerHp(prev => Math.max(0, prev - 10));
              setEnemyStatus("Shadow Bolt Hit You!");
+             addEnemyLog("Shadow Bolt: -10 HP", 'attack');
+             triggerShake();
           }
         }, 1500);
       } else if (actionRoll < 0.7) {
         setEnemyStatus("Gathering Dark Energy...");
+        addEnemyLog("Gathering Energy...", 'info');
       } else {
         setEnemyStatus("Fast Strike!");
         setTimeout(() => {
@@ -145,6 +179,7 @@ const App: React.FC = () => {
                 setEnemyStatus("Strike Deflected!");
              } else {
                 setPlayerHp(prev => Math.max(0, prev - 5));
+                addEnemyLog("Fast Strike: -5 HP", 'attack');
              }
         }, 800);
       }
@@ -158,6 +193,7 @@ const App: React.FC = () => {
     setEnemyHp(100);
     setGameResult(null);
     setSpellLog([]);
+    setEnemyLog([]);
     gameOverRef.current = false;
     setEnemyStatus("Waiting...");
     setLastCastTimes({});
@@ -210,8 +246,8 @@ const App: React.FC = () => {
       
       return (
         <div className="flex items-center gap-4 relative group">
-            <div className={`relative w-12 h-12 rounded-lg border flex items-center justify-center overflow-hidden ${onCooldown ? 'border-gray-600 bg-gray-800' : `${colorClass.replace('text', 'border')}/30 ${bgClass}`}`}>
-                <Icon className={onCooldown ? 'text-gray-500' : colorClass} size={24} />
+            <div className={`relative w-10 h-10 rounded-lg border flex items-center justify-center overflow-hidden ${onCooldown ? 'border-gray-600 bg-gray-800' : `${colorClass.replace('text', 'border')}/30 ${bgClass}`}`}>
+                <Icon className={onCooldown ? 'text-gray-500' : colorClass} size={20} />
                 {onCooldown && (
                     <div 
                         className="absolute bottom-0 left-0 right-0 bg-black/50 transition-all duration-100 ease-linear"
@@ -220,15 +256,15 @@ const App: React.FC = () => {
                 )}
             </div>
             <div>
-                <p className={`font-bold ${onCooldown ? 'text-gray-500' : colorClass.replace('text-', 'text-')}`}>{name}</p>
-                <p className="text-xs text-gray-400">{desc}</p>
+                <p className={`font-bold text-sm ${onCooldown ? 'text-gray-500' : colorClass.replace('text-', 'text-')}`}>{name}</p>
+                <p className="text-[10px] text-gray-400">{desc}</p>
             </div>
         </div>
       );
   }
 
   return (
-    <div className="relative w-screen h-[100dvh] bg-black text-white font-sans overflow-hidden">
+    <div className={`relative w-screen h-[100dvh] bg-black text-white font-sans overflow-hidden ${isShaking ? 'shake-effect' : ''}`}>
       {/* Main Game Layer */}
       <MagicCanvas 
         onSpellCast={handleSpellCast} 
@@ -286,6 +322,17 @@ const App: React.FC = () => {
                     {playerHp}/100
                  </span>
              </div>
+             {/* Enemy Log (Below Player HP) */}
+             <div className="mt-4 pointer-events-auto">
+                 <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-2"><Scroll size={12}/> Enemy Actions</h3>
+                 <div className="space-y-1">
+                     {enemyLog.map(log => (
+                         <div key={log.id} className={`text-xs px-2 py-1 rounded bg-black/50 border-l-2 ${log.type === 'attack' ? 'border-red-500 text-red-200' : 'border-gray-500 text-gray-300'}`}>
+                             {log.text}
+                         </div>
+                     ))}
+                 </div>
+             </div>
           </div>
 
           {/* Center Info */}
@@ -323,13 +370,13 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Grimoire (Left) */}
-      <div className="absolute top-1/2 left-8 transform -translate-y-1/2 w-72 p-6 rounded-xl border border-white/10 bg-black/80 backdrop-blur-xl shadow-2xl pointer-events-none">
-        <h2 className="text-lg font-bold mb-4 text-purple-300 flex items-center gap-2">
-            <Info size={20} /> Grimoire
+      {/* Grimoire (Bottom Left) */}
+      <div className="absolute bottom-6 left-6 w-64 p-4 rounded-xl border border-white/10 bg-black/80 backdrop-blur-xl shadow-2xl pointer-events-none">
+        <h2 className="text-sm font-bold mb-3 text-purple-300 flex items-center gap-2">
+            <Info size={16} /> Grimoire
         </h2>
         
-        <div className="space-y-5">
+        <div className="space-y-3">
             {renderGrimoireItem(SpellType.FROSTBOLT, "Frostbolt", "Draw Line (8 Dmg)", Snowflake, "text-cyan-400", "bg-cyan-500/10")}
             {renderGrimoireItem(SpellType.FIREBALL, "Fireball", "Draw V or Triangle (15 Dmg)", Flame, "text-orange-500", "bg-orange-500/10")}
             {renderGrimoireItem(SpellType.LIGHTNING, "Lightning", "Draw Zig-Zag (25 Dmg)", Zap, "text-yellow-400", "bg-yellow-500/10")}
