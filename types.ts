@@ -16,10 +16,9 @@ export enum GestureType {
   TRIANGLE = 'TRIANGLE',    // Fireball
   CIRCLE = 'CIRCLE',        // Shield
   SQUARE = 'SQUARE',        // Heal
-  LINE_V = 'LINE_V',        // Bolt
-  LINE_H = 'LINE_H',        // Slash
+  V_SHAPE = 'V_SHAPE',      // Bolt/Zap (Replaces Line V)
   ZIGZAG = 'ZIGZAG',        // Lightning
-  CHECKMARK = 'CHECKMARK',  // Meteor
+  CHECKMARK = 'CHECKMARK',  // Meteor/Slash
   S_SHAPE = 'S_SHAPE',      // Tornado
 }
 

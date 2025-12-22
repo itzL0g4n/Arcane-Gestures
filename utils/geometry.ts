@@ -61,7 +61,6 @@ const scaleToSquare = (points: Point[], size: number): Point[] => {
         maxY = Math.max(maxY, p.y);
     });
     
-    // Protect against division by zero for straight lines
     const width = Math.max(0.01, maxX - minX);
     const height = Math.max(0.01, maxY - minY);
     
@@ -81,6 +80,7 @@ const pathDistance = (path1: Point[], path2: Point[]): number => {
 };
 
 // --- TEMPLATES ---
+
 const createCircle = (): Point[] => {
     const p: Point[] = [];
     for(let i=0; i<32; i++) {
@@ -89,16 +89,20 @@ const createCircle = (): Point[] => {
     }
     return p;
 };
+
 const createTriangle = (): Point[] => {
     const p: Point[] = [];
+    // Closed Triangle
     const apex = {x: 0.5, y: 0};
     const br = {x: 1, y: 1};
     const bl = {x: 0, y: 1};
-    for(let i=0; i<=10; i++) p.push({x: apex.x + (br.x-apex.x)*(i/10), y: apex.y + (br.y-apex.y)*(i/10)});
-    for(let i=0; i<=10; i++) p.push({x: br.x + (bl.x-br.x)*(i/10), y: br.y + (bl.y-br.y)*(i/10)});
+    // 3 segments
+    for(let i=0; i<10; i++) p.push({x: apex.x + (br.x-apex.x)*(i/10), y: apex.y + (br.y-apex.y)*(i/10)});
+    for(let i=0; i<10; i++) p.push({x: br.x + (bl.x-br.x)*(i/10), y: br.y + (bl.y-br.y)*(i/10)});
     for(let i=0; i<=10; i++) p.push({x: bl.x + (apex.x-bl.x)*(i/10), y: bl.y + (apex.y-bl.y)*(i/10)});
     return resample(p, 32);
 };
+
 const createSquare = (): Point[] => {
     const p: Point[] = [];
     const tl = {x:0, y:0}; const tr = {x:1, y:0}; const br = {x:1, y:1}; const bl = {x:0, y:1};
@@ -108,6 +112,7 @@ const createSquare = (): Point[] => {
     for(let i=0; i<8; i++) p.push({x: bl.x + (tl.x-bl.x)*(i/8), y: bl.y + (tl.y-bl.y)*(i/8)});
     return resample(p, 32);
 };
+
 const createLightning = (): Point[] => {
     const p: Point[] = [];
     const p1={x:0.3, y:0}; const p2={x:0.9, y:0.35}; const p3={x:0.1, y:0.65}; const p4={x:0.7, y:1};
@@ -116,20 +121,25 @@ const createLightning = (): Point[] => {
     for(let i=0; i<=10; i++) p.push({x: p3.x + (p4.x-p3.x)*(i/10), y: p3.y + (p4.y-p3.y)*(i/10)});
     return resample(p, 32);
 };
+
 const createV = (): Point[] => {
     const p: Point[] = [];
     const p1={x:0, y:0}; const p2={x:0.5, y:1}; const p3={x:1, y:0};
+    // Simple 2 stroke down-up
     for(let i=0; i<16; i++) p.push({x: p1.x + (p2.x-p1.x)*(i/16), y: p1.y + (p2.y-p1.y)*(i/16)});
     for(let i=0; i<16; i++) p.push({x: p2.x + (p3.x-p2.x)*(i/16), y: p2.y + (p3.y-p2.y)*(i/16)});
     return resample(p, 32);
 }
+
 const createCheckmark = (): Point[] => {
     const p: Point[] = [];
+    // Start mid-left, down to low-center, up to high-right (asymmetric V)
     const p1 = {x:0, y:0.5}; const p2 = {x:0.4, y:1}; const p3 = {x:1, y:0};
     for(let i=0; i<10; i++) p.push({x: p1.x + (p2.x-p1.x)*(i/10), y: p1.y + (p2.y-p1.y)*(i/10)});
     for(let i=0; i<22; i++) p.push({x: p2.x + (p3.x-p2.x)*(i/22), y: p2.y + (p3.y-p2.y)*(i/22)});
     return resample(p, 32);
 }
+
 const createS = (): Point[] => {
     const p: Point[] = [];
     const p0={x:1, y:0}; const p1={x:0, y:0.2}; const p2={x:1, y:0.8}; const p3={x:0, y:1};
@@ -139,11 +149,14 @@ const createS = (): Point[] => {
     return resample(p, 32);
 }
 
-// Map Gestures (Lines are handled via heuristics now)
+// Map Gestures 
+// Note: TRIANGLE only uses createTriangle (closed)
+// V_SHAPE uses createV (open)
 const RAW_TEMPLATES = {
     [GestureType.CIRCLE]: [createCircle()], 
     [GestureType.SQUARE]: [createSquare()],
-    [GestureType.TRIANGLE]: [createTriangle(), createV()], 
+    [GestureType.TRIANGLE]: [createTriangle()], 
+    [GestureType.V_SHAPE]: [createV()],
     [GestureType.ZIGZAG]: [createLightning()],
     [GestureType.CHECKMARK]: [createCheckmark()],
     [GestureType.S_SHAPE]: [createS()],
@@ -158,38 +171,11 @@ Object.entries(RAW_TEMPLATES).forEach(([key, list]) => {
 });
 
 export const recognizeGesture = (rawPath: Point[]): GestureType => {
-  if (rawPath.length < 5) return GestureType.NONE; // Lowered from 8
+  if (rawPath.length < 5) return GestureType.NONE;
   const rawLen = getPathLength(rawPath);
-  if (rawLen < 0.05) return GestureType.NONE; // Lowered from 0.1 for smaller gestures
+  if (rawLen < 0.05) return GestureType.NONE; 
 
-  // --- HEURISTIC: LINE DETECTION ---
-  // Calculates bounding box and straightness to detect lines BEFORE template matching.
-  // This solves the issue where scaling a line to a square ruins the aspect ratio.
-  
-  const start = rawPath[0];
-  const end = rawPath[rawPath.length - 1];
-  const distStartEnd = distance(start, end);
-  const straightness = distStartEnd / rawLen; // 1.0 is perfectly straight, < 0.5 is curvy
-
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  rawPath.forEach(p => {
-      minX = Math.min(minX, p.x);
-      maxX = Math.max(maxX, p.x);
-      minY = Math.min(minY, p.y);
-      maxY = Math.max(maxY, p.y);
-  });
-  const width = Math.max(0.001, maxX - minX);
-  const height = Math.max(0.001, maxY - minY);
-
-  // High straightness indicates a line-like gesture
-  if (straightness > 0.8) {
-      // It's a line. Which way?
-      if (height > width * 1.5) return GestureType.LINE_V;
-      if (width > height * 1.5) return GestureType.LINE_H;
-      // Diagonals could fall here, but we default to template matching for them
-  }
-
-  // --- TEMPLATE MATCHING ---
+  // Just strict template matching now, no heuristics
   let points = resample(rawPath, 32);
   points = translateToOrigin(points);
   points = scaleToSquare(points, 1.0);
@@ -197,31 +183,31 @@ export const recognizeGesture = (rawPath: Point[]): GestureType => {
   let bestScore = Infinity;
   let bestType: GestureType = GestureType.NONE;
 
-  const test = (testPoints: Point[]) => {
+  // Use array of candidates (normal + reversed) to avoid closure mutation issues with TS flow analysis
+  const candidates = [points, [...points].reverse()];
+
+  for (const candidate of candidates) {
       for (const [type, templates] of Object.entries(TEMPLATES)) {
           if (type === GestureType.NONE) continue;
           for(const template of templates) {
-              const d = pathDistance(testPoints, template);
+              const d = pathDistance(candidate, template);
               if (d < bestScore) {
                   bestScore = d;
                   bestType = type as GestureType;
               }
           }
       }
-  };
+  }
 
-  test(points);
+  console.log(`Score: ${bestScore.toFixed(3)} matched ${bestType}`);
   
-  // Only check reverse for closed shapes or shapes where direction doesn't matter much
-  // (Circles, Squares). Zigzags/Checks are usually directional.
-  // But let's allow it for robustness.
-  const reversedPoints = [...points].reverse();
-  test(reversedPoints);
-
-  console.log(`Score: ${bestScore.toFixed(3)} matched ${bestType} (Straightness: ${straightness.toFixed(2)})`);
+  // V_SHAPE and CHECKMARK are open and can look similar. 
+  // TRIANGLE is closed. 
+  // Allow looser matching for complex shapes, stricter for V vs Checkmark if needed.
   
-  // Relaxed threshold for complex shapes since lines are already handled
-  const threshold = 0.50; 
+  let threshold = 0.40;
+  if (bestType === GestureType.S_SHAPE) threshold = 0.50;
+  if (bestType === GestureType.V_SHAPE) threshold = 0.35; // Stricter for simple shapes
   
   return bestScore < threshold ? bestType : GestureType.NONE;
 };

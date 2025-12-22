@@ -18,23 +18,23 @@ const SPELL_DATA: Record<ElementType, Partial<Record<GestureType, SpellDef>>> = 
         [GestureType.TRIANGLE]: { name: "Fireball", desc: "Draw Triangle", dmg: 15, heal: 0, cooldown: 1000, icon: Flame },
         [GestureType.CHECKMARK]: { name: "Meteor", desc: "Draw Checkmark", dmg: 40, heal: 0, cooldown: 15000, icon: ArrowDown },
         [GestureType.CIRCLE]: { name: "Flame Shield", desc: "Draw Circle", dmg: 0, heal: 0, cooldown: 8000, icon: Shield },
-        [GestureType.LINE_V]: { name: "Incinerate", desc: "Draw Vertical Line", dmg: 8, heal: 0, cooldown: 500, icon: Minus },
+        [GestureType.V_SHAPE]: { name: "Incinerate", desc: "Draw 'V'", dmg: 8, heal: 0, cooldown: 500, icon: Minus },
     },
     [ElementType.WATER]: {
-        [GestureType.LINE_V]: { name: "Frostbolt", desc: "Draw Vertical Line", dmg: 10, heal: 0, cooldown: 600, icon: Snowflake },
-        [GestureType.LINE_H]: { name: "Tsunami", desc: "Draw Horizontal Line", dmg: 20, heal: 0, cooldown: 5000, icon: Waves },
+        [GestureType.V_SHAPE]: { name: "Frostbolt", desc: "Draw 'V'", dmg: 10, heal: 0, cooldown: 600, icon: Snowflake },
+        [GestureType.TRIANGLE]: { name: "Tsunami", desc: "Draw Triangle", dmg: 20, heal: 0, cooldown: 5000, icon: Waves }, // Water rune often triangle
         [GestureType.CIRCLE]: { name: "Bubble Shield", desc: "Draw Circle", dmg: 0, heal: 0, cooldown: 8000, icon: Shield },
         [GestureType.SQUARE]: { name: "Restoration", desc: "Draw Square", dmg: 0, heal: 25, cooldown: 12000, icon: PlusSquare },
     },
     [ElementType.LIGHTNING]: {
-        [GestureType.LINE_V]: { name: "Zap", desc: "Draw Vertical Line", dmg: 5, heal: 0, cooldown: 200, icon: Zap },
+        [GestureType.V_SHAPE]: { name: "Zap", desc: "Draw 'V'", dmg: 5, heal: 0, cooldown: 200, icon: Zap },
         [GestureType.ZIGZAG]: { name: "Chain Lightning", desc: "Draw ZigZag", dmg: 30, heal: 0, cooldown: 6000, icon: Zap },
         [GestureType.CIRCLE]: { name: "Static Field", desc: "Draw Circle", dmg: 0, heal: 0, cooldown: 8000, icon: Shield },
         [GestureType.TRIANGLE]: { name: "Thunderclap", desc: "Draw Triangle", dmg: 20, heal: 0, cooldown: 3000, icon: Triangle },
     },
     [ElementType.AIR]: {
-        [GestureType.LINE_H]: { name: "Wind Slash", desc: "Draw Horizontal Line", dmg: 8, heal: 0, cooldown: 300, icon: Wind },
-        [GestureType.S_SHAPE]: { name: "Tornado", desc: "Draw S Shape", dmg: 15, heal: 0, cooldown: 10000, icon: Clock }, // Time warp effect logically
+        [GestureType.CHECKMARK]: { name: "Wind Slash", desc: "Draw Checkmark", dmg: 8, heal: 0, cooldown: 300, icon: Wind }, // Fast slash
+        [GestureType.S_SHAPE]: { name: "Tornado", desc: "Draw 'S'", dmg: 15, heal: 0, cooldown: 10000, icon: Clock }, 
         [GestureType.CIRCLE]: { name: "Air Barrier", desc: "Draw Circle", dmg: 0, heal: 0, cooldown: 8000, icon: Shield },
         [GestureType.TRIANGLE]: { name: "Vacuum", desc: "Draw Triangle", dmg: 25, heal: 0, cooldown: 5000, icon: Crosshair },
     }
@@ -131,7 +131,6 @@ const App: React.FC = () => {
     }
     if (gesture === GestureType.S_SHAPE) {
         status += " (Slowed)";
-        // Logic for slow handled in enemy AI
     }
 
     setEnemyStatus(status);
