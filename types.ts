@@ -4,31 +4,38 @@ export interface Point {
   y: number;
 }
 
-export enum SpellType {
+export enum ElementType {
+  FIRE = 'FIRE',
+  WATER = 'WATER',
+  LIGHTNING = 'LIGHTNING',
+  AIR = 'AIR'
+}
+
+export enum GestureType {
   NONE = 'NONE',
-  FIREBALL = 'FIREBALL', // Triangle/V
-  SHIELD = 'SHIELD', // Circle
-  LIGHTNING = 'LIGHTNING', // ZigZag
-  HEAL = 'HEAL', // Square
-  FROSTBOLT = 'FROSTBOLT', // Vertical Line
-  METEOR = 'METEOR', // Checkmark
-  MISSILES = 'MISSILES', // Horizontal Line
-  TIME_WARP = 'TIME_WARP', // S Shape
+  TRIANGLE = 'TRIANGLE',    // Fireball
+  CIRCLE = 'CIRCLE',        // Shield
+  SQUARE = 'SQUARE',        // Heal
+  LINE_V = 'LINE_V',        // Bolt
+  LINE_H = 'LINE_H',        // Slash
+  ZIGZAG = 'ZIGZAG',        // Lightning
+  CHECKMARK = 'CHECKMARK',  // Meteor
+  S_SHAPE = 'S_SHAPE',      // Tornado
 }
 
 export interface Spell {
   id: string;
-  type: SpellType;
   name: string;
-  color: string;
-  icon: string;
+  element: ElementType;
+  gesture: GestureType;
   timestamp: number;
+  color: string;
 }
 
 export enum GameState {
-  IDLE = 'IDLE',       // Hand detected, waiting
-  DRAWING = 'DRAWING', // Pinching, recording path
-  CASTING = 'CASTING', // Spell recognized, playing effect
+  IDLE = 'IDLE',       
+  DRAWING = 'DRAWING', 
+  CASTING = 'CASTING', 
 }
 
 export interface Particle {
