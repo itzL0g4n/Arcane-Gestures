@@ -15,6 +15,10 @@ const HAND_CONNECTIONS = [
 const PINCH_START_THRESHOLD = 0.06; 
 const PINCH_RELEASE_THRESHOLD = 0.12; 
 
+// Tuning for smoothness
+const SMOOTHING_FACTOR = 0.35; // Lower = smoother but more lag. 0.35 is a sweet spot.
+const MIN_POINT_DISTANCE = 4; // Minimum pixels between points to register
+
 interface VisualEffect {
   isDead: boolean;
   update: (ctx: CanvasRenderingContext2D, width: number, height: number, spawnParticle: (x: number, y: number, color: string, speed?: number, life?: number) => void) => void;
@@ -156,8 +160,9 @@ const MagicCanvas: React.FC<MagicCanvasProps> = ({
 
   const isPinching = useRef<boolean>(false);
   const pathRef = useRef<Point[]>([]);
-  const pointBufferRef = useRef<Point[]>([]);
-  const cursorRef = useRef<{x: number, y: number} | null>(null);
+  // We don't need pointBufferRef for average anymore, we use EMA on cursorRef directly
+  const smoothedCursorRef = useRef<{x: number, y: number} | null>(null);
+
   const particlesRef = useRef<Particle[]>([]);
   const effectsRef = useRef<VisualEffect[]>([]);
   const requestRef = useRef<number>(0);
@@ -287,11 +292,10 @@ const MagicCanvas: React.FC<MagicCanvasProps> = ({
         drawExoskeleton(ctx, screenLandmarks, selectedElement);
         handleGestures(ctx, screenLandmarks, rawLandmarks, isMirrored, sw, sh);
     } else {
-        cursorRef.current = null;
+        smoothedCursorRef.current = null;
         if (isPinching.current) {
            isPinching.current = false;
            pathRef.current = [];
-           pointBufferRef.current = [];
            setGameState(GameState.IDLE);
         }
     }
@@ -363,10 +367,10 @@ const MagicCanvas: React.FC<MagicCanvasProps> = ({
   };
 
   const drawCursor = (ctx: CanvasRenderingContext2D, el: ElementType) => {
-      if (!cursorRef.current) return;
+      if (!smoothedCursorRef.current) return;
       const color = getElementColor(el);
-      const x = cursorRef.current.x;
-      const y = cursorRef.current.y;
+      const x = smoothedCursorRef.current.x;
+      const y = smoothedCursorRef.current.y;
 
       ctx.save();
       ctx.shadowBlur = 15;
@@ -397,12 +401,20 @@ const MagicCanvas: React.FC<MagicCanvasProps> = ({
 
   const handleGestures = (ctx: CanvasRenderingContext2D, screenLms: any[], rawLms: any[], isMirrored: boolean, w: number, h: number) => {
       const indexTip = screenLms[8];
-      pointBufferRef.current.push(indexTip);
-      if (pointBufferRef.current.length > 4) pointBufferRef.current.shift();
-      let avgX = 0, avgY = 0;
-      for(const p of pointBufferRef.current) { avgX += p.x; avgY += p.y; }
-      const smoothedPoint = { x: avgX / pointBufferRef.current.length, y: avgY / pointBufferRef.current.length };
-      cursorRef.current = smoothedPoint;
+      
+      // --- EXPONENTIAL MOVING AVERAGE (EMA) SMOOTHING ---
+      if (!smoothedCursorRef.current) {
+          smoothedCursorRef.current = indexTip;
+      } else {
+          // NewVal = OldVal * (1 - alpha) + Input * alpha
+          // alpha = SMOOTHING_FACTOR. Higher = faster/jittery, Lower = smooth/laggy
+          smoothedCursorRef.current = {
+              x: smoothedCursorRef.current.x * (1 - SMOOTHING_FACTOR) + indexTip.x * SMOOTHING_FACTOR,
+              y: smoothedCursorRef.current.y * (1 - SMOOTHING_FACTOR) + indexTip.y * SMOOTHING_FACTOR
+          };
+      }
+      
+      const cursor = smoothedCursorRef.current;
       
       const rawIndex = rawLms[8];
       const rawThumb = rawLms[4];
@@ -415,8 +427,17 @@ const MagicCanvas: React.FC<MagicCanvasProps> = ({
               pathRef.current = [];
               propsRef.current.setGameState(GameState.DRAWING);
           }
-          pathRef.current.push(smoothedPoint);
-          if (Math.random() > 0.4) spawnParticle(smoothedPoint.x, smoothedPoint.y, getElementColor(propsRef.current.selectedElement), 0.5, 0.5);
+          
+          // --- POINT FILTERING ---
+          // Only add point if it moved enough pixels from last point
+          // This prevents "knots" and cleans up the data for the recognizer
+          const lastPoint = pathRef.current.length > 0 ? pathRef.current[pathRef.current.length - 1] : null;
+          
+          if (!lastPoint || distance(lastPoint, cursor) > MIN_POINT_DISTANCE) {
+              pathRef.current.push(cursor);
+          }
+
+          if (Math.random() > 0.4) spawnParticle(cursor.x, cursor.y, getElementColor(propsRef.current.selectedElement), 0.5, 0.5);
       } else {
           if (isPinching.current) {
               isPinching.current = false;
@@ -471,11 +492,48 @@ const MagicCanvas: React.FC<MagicCanvasProps> = ({
       if (pathRef.current.length < 2) return;
       const color = getElementColor(el);
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.beginPath(); ctx.moveTo(pathRef.current[0].x, pathRef.current[0].y);
-      for (let i=1; i < pathRef.current.length; i++) ctx.lineTo(pathRef.current[i].x, pathRef.current[i].y);
-      ctx.lineWidth = 12; ctx.strokeStyle = color.replace('rgb', 'rgba').replace(')', ', 0.2)'); ctx.stroke();
-      ctx.lineWidth = 4; ctx.strokeStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 20; ctx.stroke(); ctx.shadowBlur = 0;
-      ctx.lineWidth = 2; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+      
+      // Core glow
+      ctx.shadowColor = color; 
+      ctx.shadowBlur = 20;
+      
+      // Outer Line (Faint)
+      ctx.strokeStyle = color.replace('rgb', 'rgba').replace(')', ', 0.2)');
+      ctx.lineWidth = 12;
+      ctx.beginPath();
+      
+      // Quadratic Curve Interpolation for Smoothness
+      if (pathRef.current.length > 2) {
+          ctx.moveTo(pathRef.current[0].x, pathRef.current[0].y);
+          for (let i = 1; i < pathRef.current.length - 2; i++) {
+              const xc = (pathRef.current[i].x + pathRef.current[i + 1].x) / 2;
+              const yc = (pathRef.current[i].y + pathRef.current[i + 1].y) / 2;
+              ctx.quadraticCurveTo(pathRef.current[i].x, pathRef.current[i].y, xc, yc);
+          }
+          // Connect last two points straight
+          ctx.quadraticCurveTo(
+              pathRef.current[pathRef.current.length - 2].x, 
+              pathRef.current[pathRef.current.length - 2].y, 
+              pathRef.current[pathRef.current.length - 1].x, 
+              pathRef.current[pathRef.current.length - 1].y
+          );
+      } else {
+          // Fallback for tiny lines
+          ctx.moveTo(pathRef.current[0].x, pathRef.current[0].y);
+          ctx.lineTo(pathRef.current[1].x, pathRef.current[1].y);
+      }
+      ctx.stroke();
+
+      // Middle Line (Bright)
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      
+      // Inner Line (White Hot)
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
   };
 
   const spawnParticle = (x: number, y: number, color: string, speedMult: number = 1.0, lifeMult: number = 1.0) => {
