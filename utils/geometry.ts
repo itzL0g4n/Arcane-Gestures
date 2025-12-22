@@ -115,7 +115,28 @@ const createSquare = (): Point[] => {
 
 const createLightning = (): Point[] => {
     const p: Point[] = [];
+    // Classic 3-stroke bolt: Right-Down, Left-Down, Right-Down
     const p1={x:0.3, y:0}; const p2={x:0.9, y:0.35}; const p3={x:0.1, y:0.65}; const p4={x:0.7, y:1};
+    for(let i=0; i<10; i++) p.push({x: p1.x + (p2.x-p1.x)*(i/10), y: p1.y + (p2.y-p1.y)*(i/10)});
+    for(let i=0; i<10; i++) p.push({x: p2.x + (p3.x-p2.x)*(i/10), y: p2.y + (p3.y-p2.y)*(i/10)});
+    for(let i=0; i<=10; i++) p.push({x: p3.x + (p4.x-p3.x)*(i/10), y: p3.y + (p4.y-p3.y)*(i/10)});
+    return resample(p, 32);
+};
+
+const createLightningMirrored = (): Point[] => {
+    const p: Point[] = [];
+    // Mirrored bolt: Left-Down, Right-Down, Left-Down
+    const p1={x:0.7, y:0}; const p2={x:0.1, y:0.35}; const p3={x:0.9, y:0.65}; const p4={x:0.3, y:1};
+    for(let i=0; i<10; i++) p.push({x: p1.x + (p2.x-p1.x)*(i/10), y: p1.y + (p2.y-p1.y)*(i/10)});
+    for(let i=0; i<10; i++) p.push({x: p2.x + (p3.x-p2.x)*(i/10), y: p2.y + (p3.y-p2.y)*(i/10)});
+    for(let i=0; i<=10; i++) p.push({x: p3.x + (p4.x-p3.x)*(i/10), y: p3.y + (p4.y-p3.y)*(i/10)});
+    return resample(p, 32);
+};
+
+const createZ = (): Point[] => {
+    const p: Point[] = [];
+    // Standard Z: Right, Down-Left, Right
+    const p1={x:0, y:0}; const p2={x:1, y:0}; const p3={x:0, y:1}; const p4={x:1, y:1};
     for(let i=0; i<10; i++) p.push({x: p1.x + (p2.x-p1.x)*(i/10), y: p1.y + (p2.y-p1.y)*(i/10)});
     for(let i=0; i<10; i++) p.push({x: p2.x + (p3.x-p2.x)*(i/10), y: p2.y + (p3.y-p2.y)*(i/10)});
     for(let i=0; i<=10; i++) p.push({x: p3.x + (p4.x-p3.x)*(i/10), y: p3.y + (p4.y-p3.y)*(i/10)});
@@ -157,7 +178,7 @@ const RAW_TEMPLATES = {
     [GestureType.SQUARE]: [createSquare()],
     [GestureType.TRIANGLE]: [createTriangle()], 
     [GestureType.V_SHAPE]: [createV()],
-    [GestureType.ZIGZAG]: [createLightning()],
+    [GestureType.ZIGZAG]: [createLightning(), createLightningMirrored(), createZ()],
     [GestureType.CHECKMARK]: [createCheckmark()],
     [GestureType.S_SHAPE]: [createS()],
 };
@@ -208,6 +229,7 @@ export const recognizeGesture = (rawPath: Point[]): GestureType => {
   let threshold = 0.40;
   if (bestType === GestureType.S_SHAPE) threshold = 0.50;
   if (bestType === GestureType.V_SHAPE) threshold = 0.35; // Stricter for simple shapes
+  if (bestType === GestureType.ZIGZAG) threshold = 0.55; // Relaxed for ZigZag
   
   return bestScore < threshold ? bestType : GestureType.NONE;
 };
