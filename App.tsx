@@ -231,7 +231,11 @@ const App: React.FC = () => {
   const [enemyStatus, setEnemyStatus] = useState("");
   const [gameResult, setGameResult] = useState<'WIN' | 'LOSS' | null>(null);
   
+  // Ref for synchronous logic checks (Fixes rapid spamming issues)
+  const lastCastTimesRef = useRef<Record<string, number>>({});
+  // State for UI updates (cooldown bars)
   const [lastCastTimes, setLastCastTimes] = useState<Record<string, number>>({});
+  
   const [cooldownProgress, setCooldownProgress] = useState<Record<string, number>>({}); 
 
   const isPlayerShieldedRef = useRef(false);
@@ -266,6 +270,7 @@ const App: React.FC = () => {
           Object.entries(stats).forEach(([gesture, def]) => {
               const spellStats = def as SpellStats;
               if (!spellStats) return;
+              // UI reads from state, which is fine for visual updates
               const lastCast = lastCastTimes[gesture] || 0;
               const elapsed = now - lastCast;
               if (elapsed < spellStats.cooldown) newProgress[gesture] = (elapsed / spellStats.cooldown) * 100;
@@ -283,13 +288,18 @@ const App: React.FC = () => {
     if (!spellStats) return false; // Not a valid spell for this element
 
     const now = Date.now();
-    const lastCast = lastCastTimes[gesture] || 0;
+    
+    // CRITICAL FIX: Use Ref for logic check to avoid React state closure staleness
+    const lastCast = lastCastTimesRef.current[gesture] || 0;
+    
     if (now - lastCast < spellStats.cooldown) {
         const spellName = TRANSLATIONS[lang].spells[selectedElement][gesture]?.name || "Spell";
         setEnemyStatus(`${spellName} ${TRANSLATIONS[lang].hud.cooldown}!`);
         return false; 
     }
 
+    // Update both Ref (for logic) and State (for UI)
+    lastCastTimesRef.current[gesture] = now;
     setLastCastTimes(prev => ({...prev, [gesture]: now}));
 
     // Get localized name
@@ -328,7 +338,7 @@ const App: React.FC = () => {
     };
     setSpellLog((prev) => [spellData, ...prev].slice(0, 5));
     return true;
-  }, [lastCastTimes, hasStarted, selectedElement, lang]);
+  }, [hasStarted, selectedElement, lang]);
 
   useEffect(() => {
     if (gameOverRef.current || !hasStarted) return;
@@ -379,7 +389,9 @@ const App: React.FC = () => {
 
   const resetGame = () => {
     setPlayerHp(100); setEnemyHp(100); setGameResult(null); setSpellLog([]); setEnemyLog([]);
-    gameOverRef.current = false; setEnemyStatus(t.waiting); setLastCastTimes({});
+    gameOverRef.current = false; setEnemyStatus(t.waiting); 
+    setLastCastTimes({}); 
+    lastCastTimesRef.current = {}; // Clear ref logic
     setHasStarted(false); setSelectedElement(null);
   };
 
