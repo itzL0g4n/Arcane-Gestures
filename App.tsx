@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import MagicCanvas from './components/MagicCanvas';
 import { GameState, Spell, GestureType, ElementType } from './types';
-import { Flame, Shield, Zap, Skull, Heart, Settings, Maximize, Minimize, FlipHorizontal, Snowflake, PlusSquare, Scroll, Clock, Crosshair, ArrowDown, Wind, Waves, Triangle, Minus, Languages } from 'lucide-react';
+import { Flame, Shield, Zap, Skull, Heart, Settings, Maximize, Minimize, FlipHorizontal, Snowflake, PlusSquare, Scroll, Clock, Crosshair, ArrowDown, Wind, Waves, Triangle, Minus, Languages, BookOpen, X, Hand } from 'lucide-react';
 
 // --- LOCALIZATION SYSTEM ---
 type Language = 'en' | 'vi';
@@ -22,6 +22,17 @@ const TRANSLATIONS = {
       fill: "Fill",
       fit: "Fit",
       language: "Tiếng Việt" 
+    },
+    tutorial: {
+      btn: "How to Play",
+      title: "Arcane Grimoire",
+      mechanics: "Mechanics",
+      mechanics_desc: "Pinch your Index Finger and Thumb together to draw a magical line in the air. Release the pinch to cast the spell.",
+      gestures: "Spells",
+      back: "Back",
+      dmg: "DMG",
+      heal: "HEAL",
+      cd: "CD"
     },
     hud: {
       you: "You",
@@ -91,6 +102,17 @@ const TRANSLATIONS = {
       fill: "Lấp đầy",
       fit: "Vừa vặn",
       language: "English"
+    },
+    tutorial: {
+      btn: "Hướng dẫn",
+      title: "Cẩm Nang Phép Thuật",
+      mechanics: "Cách Chơi",
+      mechanics_desc: "Chạm ngón trỏ và ngón cái để vẽ đường phép thuật trên không trung. Thả tay để tung chiêu.",
+      gestures: "Chiêu Thức",
+      back: "Đóng",
+      dmg: "ST",
+      heal: "HỒI",
+      cd: "GIÂY"
     },
     hud: {
       you: "Bạn",
@@ -197,6 +219,10 @@ const App: React.FC = () => {
   const [isMirrored, setIsMirrored] = useState(true); 
   const [fitMode, setFitMode] = useState<'cover' | 'contain'>('contain'); 
   const [showSettings, setShowSettings] = useState(false);
+  
+  // Tutorial State
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialTab, setTutorialTab] = useState<ElementType>(ElementType.FIRE);
 
   // Stats
   const [playerHp, setPlayerHp] = useState(100);
@@ -365,8 +391,12 @@ const App: React.FC = () => {
           <div className="w-screen h-[100dvh] bg-zinc-950 flex flex-col items-center justify-center text-white relative overflow-hidden">
                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-purple-900/40 via-black to-black"></div>
                
-               {/* Language Toggle Main Menu */}
-               <div className="absolute top-6 right-6 z-50">
+               {/* Header Controls */}
+               <div className="absolute top-6 right-6 z-50 flex gap-4">
+                   <button onClick={() => setShowTutorial(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600/80 rounded-full hover:bg-blue-500 transition-colors border border-white/20 font-bold shadow-lg shadow-blue-900/50">
+                        <BookOpen size={18} />
+                        {t.tutorial.btn}
+                    </button>
                     <button onClick={toggleLanguage} className="flex items-center gap-2 px-4 py-2 bg-gray-800/80 rounded-full hover:bg-purple-700 transition-colors border border-white/20 font-bold">
                         <Languages size={18} />
                         {t.settings.language}
@@ -416,6 +446,93 @@ const App: React.FC = () => {
                        </button>
                    </div>
                </div>
+
+               {/* Tutorial Overlay */}
+               {showTutorial && (
+                   <div className="absolute inset-0 z-50 bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-8 animate-in fade-in duration-300">
+                       <button onClick={() => setShowTutorial(false)} className="absolute top-6 right-6 p-2 bg-gray-800 rounded-full hover:bg-red-600 transition-colors">
+                           <X size={24} />
+                       </button>
+                       
+                       <div className="max-w-4xl w-full h-full flex flex-col gap-8">
+                           <div className="text-center">
+                               <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400 mb-2">{t.tutorial.title}</h2>
+                               <p className="text-gray-400">{t.tutorial.mechanics_desc}</p>
+                           </div>
+
+                           {/* Mechanics Visual */}
+                           <div className="flex justify-center gap-12 items-center bg-gray-900/50 p-6 rounded-2xl border border-white/10">
+                               <div className="text-center">
+                                   <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-2 border-2 border-white/20">
+                                       <Hand size={40} className="text-yellow-400" />
+                                   </div>
+                                   <p className="font-bold text-yellow-400">1. PINCH</p>
+                                   <p className="text-xs text-gray-400">Thumb + Index</p>
+                               </div>
+                               <div className="h-1 w-20 bg-gray-700 rounded-full"></div>
+                               <div className="text-center">
+                                   <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-2 border-2 border-white/20">
+                                       <Scroll size={40} className="text-cyan-400" />
+                                   </div>
+                                   <p className="font-bold text-cyan-400">2. DRAW</p>
+                                   <p className="text-xs text-gray-400">Trace Shape</p>
+                               </div>
+                               <div className="h-1 w-20 bg-gray-700 rounded-full"></div>
+                               <div className="text-center">
+                                   <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-2 border-2 border-white/20">
+                                       <Zap size={40} className="text-purple-400" />
+                                   </div>
+                                   <p className="font-bold text-purple-400">3. RELEASE</p>
+                                   <p className="text-xs text-gray-400">Cast Spell</p>
+                               </div>
+                           </div>
+
+                           {/* Grimoire Tabs */}
+                           <div className="flex-1 bg-gray-900/80 rounded-2xl border border-white/10 overflow-hidden flex flex-col">
+                               <div className="flex border-b border-white/10">
+                                   {[ElementType.FIRE, ElementType.WATER, ElementType.LIGHTNING, ElementType.AIR].map(el => (
+                                       <button 
+                                           key={el}
+                                           onClick={() => setTutorialTab(el)}
+                                           className={`flex-1 py-4 font-bold text-sm uppercase tracking-wider transition-colors ${tutorialTab === el ? 'bg-white/10 text-white border-b-2 border-purple-500' : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'}`}
+                                       >
+                                           {t.elements[el].name}
+                                       </button>
+                                   ))}
+                               </div>
+                               
+                               <div className="p-6 overflow-y-auto custom-scrollbar">
+                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                       {Object.entries(SPELL_STATS[tutorialTab]).map(([gesture, stats]) => {
+                                           const spellStats = stats as SpellStats;
+                                           const spellInfo = t.spells[tutorialTab][gesture as GestureType];
+                                           return (
+                                               <div key={gesture} className="flex items-center gap-4 bg-black/40 p-4 rounded-xl border border-white/5 hover:border-purple-500/30 transition-colors">
+                                                   <div className="w-12 h-12 bg-gray-800 rounded-lg flex items-center justify-center shrink-0">
+                                                       <spellStats.icon size={24} className="text-white" />
+                                                   </div>
+                                                   <div className="flex-1">
+                                                       <h3 className="font-bold text-lg text-purple-300">{spellInfo.name}</h3>
+                                                       <p className="text-sm text-gray-400 italic">{spellInfo.desc}</p>
+                                                   </div>
+                                                   <div className="text-right text-xs font-mono space-y-1">
+                                                       {spellStats.dmg > 0 && <div className="text-red-400">{t.tutorial.dmg}: {spellStats.dmg}</div>}
+                                                       {spellStats.heal > 0 && <div className="text-green-400">{t.tutorial.heal}: {spellStats.heal}</div>}
+                                                       <div className="text-blue-400">{t.tutorial.cd}: {spellStats.cooldown/1000}s</div>
+                                                   </div>
+                                               </div>
+                                           )
+                                       })}
+                                   </div>
+                               </div>
+                           </div>
+
+                           <button onClick={() => setShowTutorial(false)} className="mx-auto px-8 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-transform">
+                               {t.tutorial.back}
+                           </button>
+                       </div>
+                   </div>
+               )}
           </div>
       )
   }
