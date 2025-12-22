@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import MagicCanvas from './components/MagicCanvas';
 import { GameState, Spell, SpellType } from './types';
-import { Flame, Shield, Zap, Info, Skull, Heart, Settings, Maximize, Minimize, FlipHorizontal, Snowflake, PlusSquare, Scroll } from 'lucide-react';
+import { Flame, Shield, Zap, Info, Skull, Heart, Settings, Maximize, Minimize, FlipHorizontal, Snowflake, PlusSquare, Scroll, Clock, Crosshair, ArrowDown } from 'lucide-react';
 
 const COOLDOWNS: Record<SpellType, number> = {
   [SpellType.NONE]: 0,
@@ -10,6 +10,9 @@ const COOLDOWNS: Record<SpellType, number> = {
   [SpellType.LIGHTNING]: 5000,
   [SpellType.HEAL]: 12000,
   [SpellType.FROSTBOLT]: 500,
+  [SpellType.METEOR]: 15000,
+  [SpellType.MISSILES]: 200,
+  [SpellType.TIME_WARP]: 20000,
 };
 
 interface EnemyLogEntry {
@@ -19,6 +22,7 @@ interface EnemyLogEntry {
 }
 
 const App: React.FC = () => {
+  const [hasStarted, setHasStarted] = useState(false);
   const [gameState, setGameState] = useState<GameState>(GameState.IDLE);
   const [spellLog, setSpellLog] = useState<Spell[]>([]);
   const [enemyLog, setEnemyLog] = useState<EnemyLogEntry[]>([]);
@@ -36,16 +40,24 @@ const App: React.FC = () => {
   const [enemyStatus, setEnemyStatus] = useState("Waiting...");
   const [gameResult, setGameResult] = useState<'WIN' | 'LOSS' | null>(null);
   
+  // Modifiers
+  const [timeWarpActive, setTimeWarpActive] = useState(false);
+  
   // Cooldown State
   const [lastCastTimes, setLastCastTimes] = useState<Record<string, number>>({});
   const [cooldownProgress, setCooldownProgress] = useState<Record<string, number>>({}); 
 
   const isPlayerShieldedRef = useRef(false);
   const gameOverRef = useRef(false);
+  const timeWarpRef = useRef(false);
 
   useEffect(() => {
     isPlayerShieldedRef.current = isPlayerShielded;
   }, [isPlayerShielded]);
+
+  useEffect(() => {
+    timeWarpRef.current = timeWarpActive;
+  }, [timeWarpActive]);
 
   useEffect(() => {
     if (playerHp <= 0) {
@@ -92,7 +104,7 @@ const App: React.FC = () => {
   }, [lastCastTimes]);
 
   const handleSpellCast = useCallback((type: SpellType) => {
-    if (gameOverRef.current) return;
+    if (gameOverRef.current || !hasStarted) return;
     
     // Check Cooldown
     const now = Date.now();
@@ -110,7 +122,7 @@ const App: React.FC = () => {
     
     if (type === SpellType.FIREBALL) {
       dmg = 15;
-      status = "Took 15 Damage!";
+      status = "Fireball! (15 Dmg)";
     } else if (type === SpellType.LIGHTNING) {
       dmg = 25;
       status = "CRITICAL HIT! (25)";
@@ -123,7 +135,17 @@ const App: React.FC = () => {
       status = "Player Healed (+20)!";
     } else if (type === SpellType.FROSTBOLT) {
       dmg = 8;
-      status = "Frozen! (8 Dmg)";
+      status = "Frostbolt! (8 Dmg)";
+    } else if (type === SpellType.MISSILES) {
+      dmg = 4;
+      status = "Arcane Missile! (4 Dmg)";
+    } else if (type === SpellType.METEOR) {
+      dmg = 40;
+      status = "METEOR STRIKE! (40 Dmg)";
+    } else if (type === SpellType.TIME_WARP) {
+      setTimeWarpActive(true);
+      setTimeout(() => setTimeWarpActive(false), 5000);
+      status = "Time Warped! (Enemy Slowed)";
     }
 
     if (dmg > 0) {
@@ -143,13 +165,20 @@ const App: React.FC = () => {
       timestamp: Date.now(),
     };
     setSpellLog((prev) => [spellData, ...prev].slice(0, 5));
-  }, [lastCastTimes]);
+  }, [lastCastTimes, hasStarted]);
 
   useEffect(() => {
-    if (gameOverRef.current) return;
+    if (gameOverRef.current || !hasStarted) return;
 
+    // Enemy AI Loop
     const interval = setInterval(() => {
       if (gameOverRef.current) return;
+      if (timeWarpRef.current && Math.random() > 0.3) {
+          // If time warp is active, enemy has 70% chance to skip turn
+          setEnemyStatus("Enemy is frozen in time...");
+          return;
+      }
+
       const actionRoll = Math.random();
       
       if (actionRoll < 0.4) {
@@ -186,7 +215,7 @@ const App: React.FC = () => {
     }, 4000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [hasStarted]);
 
   const resetGame = () => {
     setPlayerHp(100);
@@ -197,15 +226,19 @@ const App: React.FC = () => {
     gameOverRef.current = false;
     setEnemyStatus("Waiting...");
     setLastCastTimes({});
+    setTimeWarpActive(false);
   };
 
   const getSpellName = (type: SpellType) => {
     switch (type) {
       case SpellType.FIREBALL: return "Fireball";
       case SpellType.SHIELD: return "Arcane Shield";
-      case SpellType.LIGHTNING: return "Lightning Bolt";
+      case SpellType.LIGHTNING: return "Lightning";
       case SpellType.HEAL: return "Restoration";
       case SpellType.FROSTBOLT: return "Frostbolt";
+      case SpellType.METEOR: return "Meteor";
+      case SpellType.MISSILES: return "Arcane Missiles";
+      case SpellType.TIME_WARP: return "Time Warp";
       default: return "Fizzle";
     }
   };
@@ -217,6 +250,9 @@ const App: React.FC = () => {
       case SpellType.LIGHTNING: return "text-yellow-400";
       case SpellType.HEAL: return "text-emerald-300";
       case SpellType.FROSTBOLT: return "text-cyan-300";
+      case SpellType.METEOR: return "text-red-600";
+      case SpellType.MISSILES: return "text-pink-400";
+      case SpellType.TIME_WARP: return "text-indigo-400";
       default: return "text-gray-400";
     }
   };
@@ -246,8 +282,8 @@ const App: React.FC = () => {
       
       return (
         <div className="flex items-center gap-4 relative group">
-            <div className={`relative w-10 h-10 rounded-lg border flex items-center justify-center overflow-hidden ${onCooldown ? 'border-gray-600 bg-gray-800' : `${colorClass.replace('text', 'border')}/30 ${bgClass}`}`}>
-                <Icon className={onCooldown ? 'text-gray-500' : colorClass} size={20} />
+            <div className={`relative w-8 h-8 rounded-lg border flex items-center justify-center overflow-hidden ${onCooldown ? 'border-gray-600 bg-gray-800' : `${colorClass.replace('text', 'border')}/30 ${bgClass}`}`}>
+                <Icon className={onCooldown ? 'text-gray-500' : colorClass} size={16} />
                 {onCooldown && (
                     <div 
                         className="absolute bottom-0 left-0 right-0 bg-black/50 transition-all duration-100 ease-linear"
@@ -256,11 +292,31 @@ const App: React.FC = () => {
                 )}
             </div>
             <div>
-                <p className={`font-bold text-sm ${onCooldown ? 'text-gray-500' : colorClass.replace('text-', 'text-')}`}>{name}</p>
-                <p className="text-[10px] text-gray-400">{desc}</p>
+                <p className={`font-bold text-xs ${onCooldown ? 'text-gray-500' : colorClass.replace('text-', 'text-')}`}>{name}</p>
+                <p className="text-[9px] text-gray-400">{desc}</p>
             </div>
         </div>
       );
+  }
+
+  if (!hasStarted) {
+      return (
+          <div className="w-screen h-[100dvh] bg-black flex flex-col items-center justify-center text-white relative overflow-hidden">
+               <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1519074069444-1ba4fff66d16?q=80&w=2544&auto=format&fit=crop')] bg-cover opacity-20"></div>
+               <div className="z-10 text-center">
+                   <h1 className="text-6xl font-black mb-4 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400">ARCANE GESTURES</h1>
+                   <p className="text-xl text-gray-400 mb-8 max-w-md mx-auto">Master the somatic components of magic. Defeat the Shadow Construct.</p>
+                   <button 
+                    onClick={() => setHasStarted(true)}
+                    className="group relative px-8 py-4 bg-white text-black font-bold text-xl rounded-full overflow-hidden transition-transform hover:scale-105"
+                   >
+                       <span className="relative z-10">ENTER ARENA</span>
+                       <div className="absolute inset-0 bg-gradient-to-r from-cyan-400 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                   </button>
+                   <p className="mt-8 text-sm text-gray-500">Requires Camera Access • Desktop Recommended</p>
+               </div>
+          </div>
+      )
   }
 
   return (
@@ -350,6 +406,7 @@ const App: React.FC = () => {
              <div className="flex items-center gap-2 mb-2">
                  <span className="font-bold text-xl text-purple-300">Shadow Construct</span>
                  <Skull className="text-purple-500" />
+                 {timeWarpActive && <Clock className="text-indigo-400 animate-spin" size={20} />}
              </div>
              <div className="w-full h-4 bg-gray-800 rounded-full border border-gray-600 overflow-hidden relative">
                  <div 
@@ -371,43 +428,21 @@ const App: React.FC = () => {
       </div>
 
       {/* Grimoire (Bottom Left) */}
-      <div className="absolute bottom-6 left-6 w-64 p-4 rounded-xl border border-white/10 bg-black/80 backdrop-blur-xl shadow-2xl pointer-events-none">
+      <div className="absolute bottom-6 left-6 w-64 p-4 rounded-xl border border-white/10 bg-black/80 backdrop-blur-xl shadow-2xl pointer-events-none max-h-[40vh] overflow-y-auto">
         <h2 className="text-sm font-bold mb-3 text-purple-300 flex items-center gap-2">
             <Info size={16} /> Grimoire
         </h2>
         
-        <div className="space-y-3">
-            {renderGrimoireItem(SpellType.FROSTBOLT, "Frostbolt", "Draw Line (8 Dmg)", Snowflake, "text-cyan-400", "bg-cyan-500/10")}
-            {renderGrimoireItem(SpellType.FIREBALL, "Fireball", "Draw V or Triangle (15 Dmg)", Flame, "text-orange-500", "bg-orange-500/10")}
+        <div className="space-y-2">
+            {renderGrimoireItem(SpellType.METEOR, "Meteor", "Draw Checkmark (40 Dmg)", ArrowDown, "text-red-500", "bg-red-500/10")}
             {renderGrimoireItem(SpellType.LIGHTNING, "Lightning", "Draw Zig-Zag (25 Dmg)", Zap, "text-yellow-400", "bg-yellow-500/10")}
+            {renderGrimoireItem(SpellType.FIREBALL, "Fireball", "Draw V or Triangle (15 Dmg)", Flame, "text-orange-500", "bg-orange-500/10")}
+            {renderGrimoireItem(SpellType.FROSTBOLT, "Frostbolt", "Vertical Line (8 Dmg)", Snowflake, "text-cyan-400", "bg-cyan-500/10")}
+            {renderGrimoireItem(SpellType.MISSILES, "Arcane Missiles", "Horizontal Line (4 Dmg)", Crosshair, "text-pink-400", "bg-pink-500/10")}
+            {renderGrimoireItem(SpellType.TIME_WARP, "Time Warp", "Draw 'S' (Slow Enemy)", Clock, "text-indigo-400", "bg-indigo-500/10")}
             {renderGrimoireItem(SpellType.SHIELD, "Shield", "Draw Circle (Block)", Shield, "text-green-400", "bg-green-500/10")}
             {renderGrimoireItem(SpellType.HEAL, "Restoration", "Draw Square (+20 HP)", PlusSquare, "text-emerald-400", "bg-emerald-500/10")}
         </div>
-      </div>
-
-      {/* Spell Log (Right) */}
-      <div className="absolute top-1/2 right-8 transform -translate-y-1/2 w-64 pointer-events-none">
-         <h2 className="text-right text-sm font-bold text-gray-500 uppercase tracking-widest mb-4">Spell Log</h2>
-         <div className="space-y-3 flex flex-col items-end">
-            {spellLog.map((spell, index) => (
-                <div 
-                    key={spell.id} 
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg border border-white/10 bg-black/60 backdrop-blur-md shadow-lg transition-all duration-500 ${index === 0 ? 'scale-110 translate-x-[-10px] border-white/30' : 'opacity-70 scale-95'}`}
-                >
-                    <div className="text-right">
-                        <p className={`font-bold ${spell.color}`}>{spell.name}</p>
-                        <p className="text-[10px] text-gray-500">Casted just now</p>
-                    </div>
-                     <div className={`p-2 rounded-full bg-white/5 ${spell.color}`}>
-                        {spell.type === SpellType.FIREBALL && <Flame size={16} />}
-                        {spell.type === SpellType.SHIELD && <Shield size={16} />}
-                        {spell.type === SpellType.LIGHTNING && <Zap size={16} />}
-                        {spell.type === SpellType.HEAL && <PlusSquare size={16} />}
-                        {spell.type === SpellType.FROSTBOLT && <Snowflake size={16} />}
-                     </div>
-                </div>
-            ))}
-         </div>
       </div>
       
       {/* Game Over Overlay */}

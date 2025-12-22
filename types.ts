@@ -1,3 +1,4 @@
+
 export interface Point {
   x: number;
   y: number;
@@ -5,11 +6,14 @@ export interface Point {
 
 export enum SpellType {
   NONE = 'NONE',
-  FIREBALL = 'FIREBALL',
-  SHIELD = 'SHIELD',
-  LIGHTNING = 'LIGHTNING',
-  HEAL = 'HEAL',
-  FROSTBOLT = 'FROSTBOLT',
+  FIREBALL = 'FIREBALL', // Triangle/V
+  SHIELD = 'SHIELD', // Circle
+  LIGHTNING = 'LIGHTNING', // ZigZag
+  HEAL = 'HEAL', // Square
+  FROSTBOLT = 'FROSTBOLT', // Vertical Line
+  METEOR = 'METEOR', // Checkmark
+  MISSILES = 'MISSILES', // Horizontal Line
+  TIME_WARP = 'TIME_WARP', // S Shape
 }
 
 export interface Spell {

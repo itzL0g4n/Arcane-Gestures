@@ -71,8 +71,6 @@ const translateToOrigin = (points: Point[]): Point[] => {
 
 /**
  * Scales points to fit within a unit box [0,1]x[0,1]
- * Preserving aspect ratio might be good, but non-uniform scaling helps distinguish similar shapes like square vs rectangle.
- * For this game, we'll use non-uniform scaling to square to make it robust against sloppy drawing sizes.
  */
 const scaleToSquare = (points: Point[], size: number): Point[] => {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -105,89 +103,115 @@ const pathDistance = (path1: Point[], path2: Point[]): number => {
 };
 
 // --- TEMPLATES ---
-// Define ideal shapes. Order of points matters (direction).
-// Coordinates are roughly 0..1
 
-const createLineTemplate = (): Point[] => {
+const createVerticalLine = (): Point[] => {
     const p: Point[] = [];
-    for(let i=0; i<32; i++) p.push({x: 0.5, y: i/31}); // Vertical line down
+    for(let i=0; i<32; i++) p.push({x: 0.5, y: i/31}); 
     return p;
 };
 
-const createCircleTemplate = (): Point[] => {
+const createHorizontalLine = (): Point[] => {
+    const p: Point[] = [];
+    for(let i=0; i<32; i++) p.push({x: i/31, y: 0.5}); 
+    return p;
+};
+
+const createCircle = (): Point[] => {
     const p: Point[] = [];
     for(let i=0; i<32; i++) {
-        const theta = (i/31) * Math.PI * 2;
-        // Start at top (roughly) for natural drawing? 
-        // Most people draw circle starting top-right (counter-clockwise) or top-left (clockwise).
-        // Let's assume standard math angle 0 is right.
-        // Let's just define points manually for a "Clockwise from Top" circle
         const angle = -Math.PI/2 + (i/31) * Math.PI * 2; 
         p.push({x: 0.5 + 0.5 * Math.cos(angle), y: 0.5 + 0.5 * Math.sin(angle)});
     }
     return p;
 };
 
-const createTriangleTemplate = (): Point[] => {
+const createTriangle = (): Point[] => {
     const p: Point[] = [];
-    // 0-10: Left leg down
-    // 10-20: Base
-    // 20-31: Right leg up
-    // Wait, Fireball is usually V or Triangle. Let's make a Triangle.
-    // Apex -> Bottom Right -> Bottom Left -> Apex
     const apex = {x: 0.5, y: 0};
     const br = {x: 1, y: 1};
     const bl = {x: 0, y: 1};
-    
     for(let i=0; i<=10; i++) p.push({x: apex.x + (br.x-apex.x)*(i/10), y: apex.y + (br.y-apex.y)*(i/10)});
     for(let i=0; i<=10; i++) p.push({x: br.x + (bl.x-br.x)*(i/10), y: br.y + (bl.y-br.y)*(i/10)});
     for(let i=0; i<=10; i++) p.push({x: bl.x + (apex.x-bl.x)*(i/10), y: bl.y + (apex.y-bl.y)*(i/10)});
-    
     return resample(p, 32);
 };
 
-const createSquareTemplate = (): Point[] => {
+const createSquare = (): Point[] => {
     const p: Point[] = [];
-    // TL -> TR -> BR -> BL -> TL
     const tl = {x:0, y:0}; const tr = {x:1, y:0}; const br = {x:1, y:1}; const bl = {x:0, y:1};
-    
     for(let i=0; i<8; i++) p.push({x: tl.x + (tr.x-tl.x)*(i/8), y: tl.y + (tr.y-tl.y)*(i/8)});
     for(let i=0; i<8; i++) p.push({x: tr.x + (br.x-tr.x)*(i/8), y: tr.y + (br.y-tr.y)*(i/8)});
     for(let i=0; i<8; i++) p.push({x: br.x + (bl.x-br.x)*(i/8), y: br.y + (bl.y-br.y)*(i/8)});
     for(let i=0; i<8; i++) p.push({x: bl.x + (tl.x-bl.x)*(i/8), y: bl.y + (tl.y-bl.y)*(i/8)});
-    
     return resample(p, 32);
 };
 
-const createLightningTemplate = (): Point[] => {
+const createLightning = (): Point[] => {
     const p: Point[] = [];
-    // Zig Zag: TopLeft -> Right -> Left -> Right (Downwards)
-    // (0.3, 0) -> (0.8, 0.3) -> (0.2, 0.6) -> (0.7, 1.0)
     const p1={x:0.3, y:0}; const p2={x:0.9, y:0.35}; const p3={x:0.1, y:0.65}; const p4={x:0.7, y:1};
-    
     for(let i=0; i<10; i++) p.push({x: p1.x + (p2.x-p1.x)*(i/10), y: p1.y + (p2.y-p1.y)*(i/10)});
     for(let i=0; i<10; i++) p.push({x: p2.x + (p3.x-p2.x)*(i/10), y: p2.y + (p3.y-p2.y)*(i/10)});
     for(let i=0; i<=10; i++) p.push({x: p3.x + (p4.x-p3.x)*(i/10), y: p3.y + (p4.y-p3.y)*(i/10)});
-    
     return resample(p, 32);
 };
 
-const createVTemplate = (): Point[] => {
+const createV = (): Point[] => {
     const p: Point[] = [];
-    // TL -> Bottom Middle -> TR
     const p1={x:0, y:0}; const p2={x:0.5, y:1}; const p3={x:1, y:0};
     for(let i=0; i<16; i++) p.push({x: p1.x + (p2.x-p1.x)*(i/16), y: p1.y + (p2.y-p1.y)*(i/16)});
     for(let i=0; i<16; i++) p.push({x: p2.x + (p3.x-p2.x)*(i/16), y: p2.y + (p3.y-p2.y)*(i/16)});
     return resample(p, 32);
 }
 
+const createCheckmark = (): Point[] => {
+    const p: Point[] = [];
+    // Down right, then Up right (long)
+    const p1 = {x:0, y:0.5}; const p2 = {x:0.4, y:1}; const p3 = {x:1, y:0};
+    for(let i=0; i<10; i++) p.push({x: p1.x + (p2.x-p1.x)*(i/10), y: p1.y + (p2.y-p1.y)*(i/10)});
+    for(let i=0; i<22; i++) p.push({x: p2.x + (p3.x-p2.x)*(i/22), y: p2.y + (p3.y-p2.y)*(i/22)});
+    return resample(p, 32);
+}
+
+const createS = (): Point[] => {
+    const p: Point[] = [];
+    // Approximate S curve using sine wave
+    for(let i=0; i<32; i++) {
+        const t = i/31; // 0 to 1
+        const x = Math.sin(t * Math.PI * 2) * 0.5 + 0.5; // -1 to 1 -> 0 to 1 (x follows sine)
+        // Actually standard S: Top Right -> Top Left -> Center -> Bottom Right -> Bottom Left
+        // Let's use simple parametric:
+        // x = cos(t), y = t? No.
+        // Let's just define key points
+        // 1. Top Right (1, 0)
+        // 2. Top Left (0, 0.25)
+        // 3. Middle (0.5, 0.5)
+        // 4. Bottom Right (1, 0.75)
+        // 5. Bottom Left (0, 1)
+        // Smooth sine is better: x = 0.5 + 0.5 * cos(t * pi + pi/2)?
+        // Let's just do manual points
+        const angle = Math.PI/2 - t * Math.PI; // Top curve
+        // This is hard to generate procedurally perfectly.
+        // Let's use a simpler 4 point bezier approx
+    }
+    // Re-do S: Top-Right -> Left -> Right -> Left (Downwards)
+    const p0={x:1, y:0}; const p1={x:0, y:0.2}; const p2={x:1, y:0.8}; const p3={x:0, y:1};
+    // Linear interp for now, resample smooths it
+    for(let i=0; i<10; i++) p.push({x: p0.x + (p1.x-p0.x)*(i/10), y: p0.y + (p1.y-p0.y)*(i/10)});
+    for(let i=0; i<10; i++) p.push({x: p1.x + (p2.x-p1.x)*(i/10), y: p1.y + (p2.y-p1.y)*(i/10)});
+    for(let i=0; i<=10; i++) p.push({x: p2.x + (p3.x-p2.x)*(i/10), y: p2.y + (p3.y-p2.y)*(i/10)});
+    return resample(p, 32);
+}
+
 // Prepare normalized templates
 const RAW_TEMPLATES = {
-    [SpellType.FROSTBOLT]: [createLineTemplate()],
-    [SpellType.SHIELD]: [createCircleTemplate()], // Could add reverse circle
-    [SpellType.HEAL]: [createSquareTemplate()],
-    [SpellType.FIREBALL]: [createTriangleTemplate(), createVTemplate()], // Support both V and Triangle
-    [SpellType.LIGHTNING]: [createLightningTemplate()],
+    [SpellType.FROSTBOLT]: [createVerticalLine()],
+    [SpellType.MISSILES]: [createHorizontalLine()],
+    [SpellType.SHIELD]: [createCircle()], 
+    [SpellType.HEAL]: [createSquare()],
+    [SpellType.FIREBALL]: [createTriangle(), createV()], 
+    [SpellType.LIGHTNING]: [createLightning()],
+    [SpellType.METEOR]: [createCheckmark()],
+    [SpellType.TIME_WARP]: [createS()],
 };
 
 // Normalize templates once at startup
@@ -203,7 +227,7 @@ export const recognizeGesture = (rawPath: Point[]): SpellType => {
   // 1. Basic filter
   if (rawPath.length < 8) return SpellType.NONE;
   const rawLen = getPathLength(rawPath);
-  if (rawLen < 0.1) return SpellType.NONE; // Too small
+  if (rawLen < 0.1) return SpellType.NONE; 
 
   // 2. Pre-process input
   let points = resample(rawPath, 32);
@@ -212,9 +236,8 @@ export const recognizeGesture = (rawPath: Point[]): SpellType => {
 
   // 3. Match against templates
   let bestScore = Infinity;
-  let bestType = SpellType.NONE;
+  let bestType: SpellType = SpellType.NONE;
 
-  // Helper to test a set of points against all templates
   const test = (testPoints: Point[]) => {
       for (const [type, templates] of Object.entries(TEMPLATES)) {
           if (type === SpellType.NONE) continue;
@@ -228,17 +251,16 @@ export const recognizeGesture = (rawPath: Point[]): SpellType => {
       }
   };
 
-  // Test original direction
   test(points);
   
-  // Test reverse direction (allows drawing circle/shapes backwards)
+  // Allow reverse for circle/squares but maybe not for checkmarks
   const reversedPoints = [...points].reverse();
   test(reversedPoints);
 
   console.log(`Score: ${bestScore.toFixed(3)} matched ${bestType}`);
 
-  // 4. Threshold
-  // Lower score is better match. 0 is identical.
-  // 0.25 is a reasonable "loose" threshold.
-  return bestScore < 0.35 ? bestType : SpellType.NONE;
+  // S-shape and Checkmarks are complex, allow slightly looser matching
+  const threshold = (bestType === SpellType.TIME_WARP || bestType === SpellType.METEOR) ? 0.45 : 0.35;
+
+  return bestScore < threshold ? bestType : SpellType.NONE;
 };
