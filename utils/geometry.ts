@@ -90,16 +90,29 @@ const createCircle = (): Point[] => {
     return p;
 };
 
-const createTriangle = (): Point[] => {
+const createTriangleTop = (): Point[] => {
     const p: Point[] = [];
-    // Closed Triangle
+    // Closed Triangle - Start at Top
     const apex = {x: 0.5, y: 0};
     const br = {x: 1, y: 1};
     const bl = {x: 0, y: 1};
-    // 3 segments
+    // 3 segments: Apex -> BR -> BL -> Apex
     for(let i=0; i<10; i++) p.push({x: apex.x + (br.x-apex.x)*(i/10), y: apex.y + (br.y-apex.y)*(i/10)});
     for(let i=0; i<10; i++) p.push({x: br.x + (bl.x-br.x)*(i/10), y: br.y + (bl.y-br.y)*(i/10)});
     for(let i=0; i<=10; i++) p.push({x: bl.x + (apex.x-bl.x)*(i/10), y: bl.y + (apex.y-bl.y)*(i/10)});
+    return resample(p, 32);
+};
+
+const createTriangleBottomLeft = (): Point[] => {
+    const p: Point[] = [];
+    // Closed Triangle - Start at Bottom Left
+    const bl = {x: 0, y: 1};
+    const apex = {x: 0.5, y: 0};
+    const br = {x: 1, y: 1};
+    // 3 segments: BL -> Apex -> BR -> BL
+    for(let i=0; i<10; i++) p.push({x: bl.x + (apex.x-bl.x)*(i/10), y: bl.y + (apex.y-bl.y)*(i/10)});
+    for(let i=0; i<10; i++) p.push({x: apex.x + (br.x-apex.x)*(i/10), y: apex.y + (br.y-apex.y)*(i/10)});
+    for(let i=0; i<=10; i++) p.push({x: br.x + (bl.x-br.x)*(i/10), y: br.y + (bl.y-br.y)*(i/10)});
     return resample(p, 32);
 };
 
@@ -176,7 +189,7 @@ const createS = (): Point[] => {
 const RAW_TEMPLATES = {
     [GestureType.CIRCLE]: [createCircle()], 
     [GestureType.SQUARE]: [createSquare()],
-    [GestureType.TRIANGLE]: [createTriangle()], 
+    [GestureType.TRIANGLE]: [createTriangleTop(), createTriangleBottomLeft()], 
     [GestureType.V_SHAPE]: [createV()],
     [GestureType.ZIGZAG]: [createLightning(), createLightningMirrored(), createZ()],
     [GestureType.CHECKMARK]: [createCheckmark()],
@@ -230,6 +243,7 @@ export const recognizeGesture = (rawPath: Point[]): GestureType => {
   if (bestType === GestureType.S_SHAPE) threshold = 0.50;
   if (bestType === GestureType.V_SHAPE) threshold = 0.35; // Stricter for simple shapes
   if (bestType === GestureType.ZIGZAG) threshold = 0.55; // Relaxed for ZigZag
+  if (bestType === GestureType.TRIANGLE) threshold = 0.55; // Relaxed for Triangle (corners often rounded)
   
   return bestScore < threshold ? bestType : GestureType.NONE;
 };
