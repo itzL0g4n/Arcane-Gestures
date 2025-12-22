@@ -316,32 +316,82 @@ const MagicCanvas: React.FC<MagicCanvasProps> = ({
     const color = getElementColor(el);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+
+    // Draw Bones
     for (const [start, end] of HAND_CONNECTIONS) {
        const p1 = landmarks[start];
        const p2 = landmarks[end];
+       
+       // Glow
        ctx.shadowBlur = 10;
        ctx.shadowColor = color;
-       ctx.strokeStyle = color.replace('rgb', 'rgba').replace(')', ', 0.4)');
-       ctx.lineWidth = 6;
+       ctx.strokeStyle = color.replace('rgb', 'rgba').replace(')', ', 0.6)');
+       ctx.lineWidth = 4;
        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+       
+       // Core
        ctx.shadowBlur = 0;
        ctx.strokeStyle = '#ffffff';
-       ctx.lineWidth = 2;
+       ctx.lineWidth = 1;
+       ctx.globalAlpha = 0.7;
        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+       ctx.globalAlpha = 1.0;
     }
+
+    // Draw Joints
+    landmarks.forEach((p, index) => {
+        // Fingertips are indices 4, 8, 12, 16, 20
+        const isTip = [4, 8, 12, 16, 20].includes(index);
+        const radius = isTip ? 6 : 3;
+        
+        ctx.shadowBlur = isTip ? 15 : 5;
+        ctx.shadowColor = color;
+        ctx.fillStyle = '#ffffff';
+        
+        ctx.beginPath(); 
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2); 
+        ctx.fill();
+
+        if (isTip) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath(); 
+            ctx.arc(p.x, p.y, radius + 4, 0, Math.PI * 2); 
+            ctx.stroke();
+        }
+    });
   };
 
   const drawCursor = (ctx: CanvasRenderingContext2D, el: ElementType) => {
       if (!cursorRef.current) return;
       const color = getElementColor(el);
+      const x = cursorRef.current.x;
+      const y = cursorRef.current.y;
+
       ctx.save();
       ctx.shadowBlur = 15;
       ctx.shadowColor = color;
+      
+      // Center
       ctx.fillStyle = isPinching.current ? '#ffffff' : color;
-      ctx.beginPath(); ctx.arc(cursorRef.current.x, cursorRef.current.y, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+      
+      // Reticle
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(cursorRef.current.x, cursorRef.current.y, 20, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI * 2); ctx.stroke();
+
+      // Crosshair
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.lineWidth = 2;
+      const r = 20;
+      ctx.beginPath();
+      ctx.moveTo(x - r, y); ctx.lineTo(x - (r-5), y);
+      ctx.moveTo(x + r, y); ctx.lineTo(x + (r-5), y);
+      ctx.moveTo(x, y - r); ctx.lineTo(x, y - (r-5));
+      ctx.moveTo(x, y + r); ctx.lineTo(x, y + (r-5));
+      ctx.stroke();
+
       ctx.restore();
   }
 
