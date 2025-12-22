@@ -138,7 +138,7 @@ class TimeWarpEffect implements VisualEffect {
 }
 
 interface MagicCanvasProps {
-  onSpellCast: (gesture: GestureType) => void;
+  onSpellCast: (gesture: GestureType) => boolean;
   setGameState: (state: GameState) => void;
   gameState: GameState;
   isMirrored: boolean;
@@ -444,10 +444,16 @@ const MagicCanvas: React.FC<MagicCanvasProps> = ({
               const normalizedPath = pathRef.current.map(p => ({ x: p.x / w, y: p.y / h }));
               const gesture = recognizeGesture(normalizedPath);
               if (gesture !== GestureType.NONE) {
-                  propsRef.current.onSpellCast(gesture);
-                  spawnSpellVisuals(gesture, propsRef.current.selectedElement, pathRef.current[pathRef.current.length - 1], w, h);
-                  propsRef.current.setGameState(GameState.CASTING);
-                  setTimeout(() => { pathRef.current = []; propsRef.current.setGameState(GameState.IDLE); }, 500);
+                  const wasCast = propsRef.current.onSpellCast(gesture);
+                  if (wasCast) {
+                      spawnSpellVisuals(gesture, propsRef.current.selectedElement, pathRef.current[pathRef.current.length - 1], w, h);
+                      propsRef.current.setGameState(GameState.CASTING);
+                      setTimeout(() => { pathRef.current = []; propsRef.current.setGameState(GameState.IDLE); }, 500);
+                  } else {
+                      // Spell failed (cooldown), reset to IDLE immediately
+                      propsRef.current.setGameState(GameState.IDLE);
+                      pathRef.current = [];
+                  }
               } else {
                   propsRef.current.setGameState(GameState.IDLE);
                   pathRef.current = [];

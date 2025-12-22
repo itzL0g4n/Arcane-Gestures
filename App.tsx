@@ -276,18 +276,18 @@ const App: React.FC = () => {
       return () => clearInterval(interval);
   }, [lastCastTimes, selectedElement]);
 
-  const handleSpellCast = useCallback((gesture: GestureType) => {
-    if (gameOverRef.current || !hasStarted || !selectedElement) return;
+  const handleSpellCast = useCallback((gesture: GestureType): boolean => {
+    if (gameOverRef.current || !hasStarted || !selectedElement) return false;
     
     const spellStats = SPELL_STATS[selectedElement][gesture];
-    if (!spellStats) return; // Not a valid spell for this element
+    if (!spellStats) return false; // Not a valid spell for this element
 
     const now = Date.now();
     const lastCast = lastCastTimes[gesture] || 0;
     if (now - lastCast < spellStats.cooldown) {
         const spellName = TRANSLATIONS[lang].spells[selectedElement][gesture]?.name || "Spell";
         setEnemyStatus(`${spellName} ${TRANSLATIONS[lang].hud.cooldown}!`);
-        return; 
+        return false; 
     }
 
     setLastCastTimes(prev => ({...prev, [gesture]: now}));
@@ -327,6 +327,7 @@ const App: React.FC = () => {
       timestamp: Date.now(),
     };
     setSpellLog((prev) => [spellData, ...prev].slice(0, 5));
+    return true;
   }, [lastCastTimes, hasStarted, selectedElement, lang]);
 
   useEffect(() => {
