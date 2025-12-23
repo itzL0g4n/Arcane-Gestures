@@ -43,6 +43,11 @@ const TRANSLATIONS = {
       slowed: "Slowed",
       cooldown: "Cooldown"
     },
+    enemies: {
+      IMP: "Shadow Imp",
+      DRAKE: "Void Drake",
+      LICH: "Dark Lich"
+    },
     actions: {
       shield_up: "Shield Up!",
       shadow_bolt_cast: "Casting Shadow Bolt!",
@@ -51,8 +56,8 @@ const TRANSLATIONS = {
       dark_energy: "Gathering Dark Energy...",
       fast_strike: "Fast Strike!",
       strike_deflected: "Strike Deflected!",
-      strike_hit: "Strike: -5 HP",
-      shadow_bolt_log: "Shadow Bolt: -10 HP"
+      strike_hit: "Strike: -{dmg} HP",
+      shadow_bolt_log: "Shadow Bolt: -{dmg} HP"
     },
     elements: {
       [ElementType.FIRE]: { name: "PYROMANCER", desc: "High Damage & Burst" },
@@ -123,6 +128,11 @@ const TRANSLATIONS = {
       slowed: "Làm chậm",
       cooldown: "Hồi chiêu"
     },
+    enemies: {
+      IMP: "Tiểu Quỷ",
+      DRAKE: "Rồng Hư Không",
+      LICH: "Pháp Sư Đen"
+    },
     actions: {
       shield_up: "Bật Khiên!",
       shadow_bolt_cast: "Đang niệm Bóng Tối!",
@@ -131,8 +141,8 @@ const TRANSLATIONS = {
       dark_energy: "Đang tụ năng lượng...",
       fast_strike: "Đánh nhanh!",
       strike_deflected: "Đã phản đòn!",
-      strike_hit: "Bị đánh: -5 Máu",
-      shadow_bolt_log: "Bóng tối: -10 Máu"
+      strike_hit: "Bị đánh: -{dmg} Máu",
+      shadow_bolt_log: "Bóng tối: -{dmg} Máu"
     },
     elements: {
       [ElementType.FIRE]: { name: "HỎA SƯ", desc: "Sát thương lớn & Dồn dam" },
@@ -204,6 +214,20 @@ const SPELL_STATS: Record<ElementType, Partial<Record<GestureType, SpellStats>>>
     }
 };
 
+interface EnemyType {
+    id: 'IMP' | 'DRAKE' | 'LICH';
+    hp: number;
+    speed: number;
+    dmgMult: number;
+    gradient: string;
+}
+
+const ENEMY_TYPES: EnemyType[] = [
+    { id: 'IMP', hp: 80, speed: 4000, dmgMult: 0.6, gradient: "from-gray-600 to-gray-800" },
+    { id: 'DRAKE', hp: 150, speed: 3000, dmgMult: 1.0, gradient: "from-red-900 to-red-600" },
+    { id: 'LICH', hp: 250, speed: 2200, dmgMult: 1.5, gradient: "from-purple-900 to-indigo-900" }
+];
+
 const App: React.FC = () => {
   const [lang, setLang] = useState<Language>('en');
   const t = TRANSLATIONS[lang];
@@ -227,6 +251,9 @@ const App: React.FC = () => {
   // Stats
   const [playerHp, setPlayerHp] = useState(100);
   const [enemyHp, setEnemyHp] = useState(100);
+  const [enemyMaxHp, setEnemyMaxHp] = useState(100);
+  const [currentEnemyDef, setCurrentEnemyDef] = useState<EnemyType>(ENEMY_TYPES[0]);
+
   const [isPlayerShielded, setIsPlayerShielded] = useState(false);
   const [enemyStatus, setEnemyStatus] = useState("");
   const [gameResult, setGameResult] = useState<'WIN' | 'LOSS' | null>(null);
@@ -342,57 +369,83 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (gameOverRef.current || !hasStarted) return;
+    
+    // AI Loop
     const interval = setInterval(() => {
       if (gameOverRef.current) return;
       
       const currentLang = lang; // Capture current language for async callbacks
       const currentT = TRANSLATIONS[currentLang];
+      const { dmgMult } = currentEnemyDef;
 
       const actionRoll = Math.random();
+      
+      // 40% Heavy Attack (Delayed)
       if (actionRoll < 0.4) {
         setEnemyStatus(currentT.actions.shadow_bolt_cast);
         addEnemyLog(currentT.actions.shadow_bolt_cast, 'info');
+        
+        // Delay for impact
         setTimeout(() => {
           if (gameOverRef.current) return;
           if (isPlayerShieldedRef.current) {
              setEnemyStatus(currentT.actions.attack_blocked);
              addEnemyLog(currentT.actions.attack_blocked, 'info');
           } else {
-             setPlayerHp(prev => Math.max(0, prev - 10));
+             const dmg = Math.round(15 * dmgMult);
+             setPlayerHp(prev => Math.max(0, prev - dmg));
              setEnemyStatus(currentT.actions.shadow_bolt_hit);
-             addEnemyLog(currentT.actions.shadow_bolt_log, 'attack');
+             addEnemyLog(currentT.actions.shadow_bolt_log.replace('{dmg}', dmg.toString()), 'attack');
              triggerShake();
           }
-        }, 1500);
-      } else if (actionRoll < 0.7) {
+        }, 1500); // Telegraph time
+      } 
+      // 30% Idle / Charge
+      else if (actionRoll < 0.7) {
         setEnemyStatus(currentT.actions.dark_energy);
-      } else {
+      } 
+      // 30% Fast Attack
+      else {
         setEnemyStatus(currentT.actions.fast_strike);
+        // Short delay
         setTimeout(() => {
              if (gameOverRef.current) return;
              if (isPlayerShieldedRef.current) setEnemyStatus(currentT.actions.strike_deflected);
              else {
-                setPlayerHp(prev => Math.max(0, prev - 5));
-                addEnemyLog(currentT.actions.strike_hit, 'attack');
+                const dmg = Math.round(8 * dmgMult);
+                setPlayerHp(prev => Math.max(0, prev - dmg));
+                addEnemyLog(currentT.actions.strike_hit.replace('{dmg}', dmg.toString()), 'attack');
              }
         }, 800);
       }
-    }, 4000);
+    }, currentEnemyDef.speed);
+    
     return () => clearInterval(interval);
-  }, [hasStarted, lang]);
+  }, [hasStarted, lang, currentEnemyDef]);
 
   const startGame = (element: ElementType) => {
+      // Pick random enemy
+      const enemy = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+      setCurrentEnemyDef(enemy);
+      setEnemyHp(enemy.hp);
+      setEnemyMaxHp(enemy.hp);
+      
       setSelectedElement(element);
       setHasStarted(true);
       setEnemyStatus(t.waiting);
   };
 
   const resetGame = () => {
-    setPlayerHp(100); setEnemyHp(100); setGameResult(null); setSpellLog([]); setEnemyLog([]);
-    gameOverRef.current = false; setEnemyStatus(t.waiting); 
+    setPlayerHp(100); 
+    setGameResult(null); 
+    setSpellLog([]); 
+    setEnemyLog([]);
+    gameOverRef.current = false; 
+    setEnemyStatus(t.waiting); 
     setLastCastTimes({}); 
     lastCastTimesRef.current = {}; // Clear ref logic
-    setHasStarted(false); setSelectedElement(null);
+    setHasStarted(false); 
+    setSelectedElement(null);
   };
 
   const toggleLanguage = () => {
@@ -589,8 +642,8 @@ const App: React.FC = () => {
           </div>
 
           <div className="w-1/3 max-w-sm flex flex-col items-end">
-             <div className="flex items-center gap-2 mb-2"><span className="font-bold text-xl text-purple-300">{t.hud.shadow_construct}</span><Skull className="text-purple-500" /></div>
-             <div className="w-full h-4 bg-gray-800 rounded-full border border-gray-600 overflow-hidden relative"><div className="h-full bg-gradient-to-l from-purple-600 to-purple-400 transition-all duration-500" style={{ width: `${enemyHp}%` }} /><span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold shadow-black drop-shadow-md">{enemyHp}/100</span></div>
+             <div className="flex items-center gap-2 mb-2"><span className="font-bold text-xl text-purple-300">{t.enemies[currentEnemyDef.id]}</span><Skull className="text-purple-500" /></div>
+             <div className="w-full h-4 bg-gray-800 rounded-full border border-gray-600 overflow-hidden relative"><div className={`h-full bg-gradient-to-l ${currentEnemyDef.gradient} transition-all duration-500`} style={{ width: `${(enemyHp / enemyMaxHp) * 100}%` }} /><span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold shadow-black drop-shadow-md">{enemyHp}/{enemyMaxHp}</span></div>
           </div>
       </div>
 
